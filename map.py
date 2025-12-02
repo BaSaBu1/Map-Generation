@@ -10,11 +10,13 @@ from Delaunator import Delaunator
 
 
 class Map:
-    def __init__(self, p, size=1, water_level=0.3, noise_scale=4, cluster=10):
+    def __init__(self, p, size=1, water_level=0.4, noise_scale=3, cluster=5, height=0.7, depth=0.5):
         self.grid_size = size
         self.water_level = water_level
         self.noise_scale = noise_scale
         self.cluster = cluster
+        self.height = height
+        self.depth = depth
         
         # Perform Lloyd's relaxation
         self.points = lloyd(p, 3)
@@ -61,6 +63,8 @@ class Map:
                         'b-', linewidth=1, color='gray', alpha=0.5)
 
     def assignAltitudes(self):
+        '''Assign altitudes to each region based on Perlin noise and distance to island centers.'''
+        
         # Generate random centers for islands
         island_centers = np.random.uniform(0.2, 0.8, (int(self.cluster), 2)) * self.grid_size
         
@@ -124,7 +128,28 @@ class Map:
             
             if len(vertices) > 2:
                 vertices = np.array(vertices)
-                color = 'forestgreen' if self.altitudes[i] > self.water_level else 'deepskyblue'
+                alt = self.altitudes[i]
+                
+                if alt < self.water_level:
+                    val = (alt - (self.water_level - self.depth)) / self.depth
+                    val = max(0.0, min(1.0, val))
+                    
+                    r = 0.0 + 0.6 * val
+                    g = 0.0 + 0.9 * val
+                    b = 0.5 + 0.5 * val
+                    color = (r, g, b)
+                    
+                else:
+                    h = self.height - self.water_level
+                    val = (alt - self.water_level) / h
+                    val = max(0.0, min(1.0, val))
+                    
+                    r = 0.7 - 0.7 * val
+                    g = 0.9 - 0.5 * val
+                    b = 0.7 - 0.7 * val
+                    color = (r, g, b)
+                
+                # color = 'forestgreen' if self.altitudes[i] > self.water_level else 'deepskyblue'
                 ax.fill(vertices[:, 0], vertices[:, 1], color=color)
         
         
