@@ -13,6 +13,8 @@ import os
 import numpy as np
 from matplotlib.collections import PolyCollection
 from noise import pnoise2
+from scipy.interpolate import griddata
+from PIL import Image
 
 from lloyd import Field
 
@@ -169,6 +171,70 @@ class Map:
         else:
             val = np.clip((alt - self.water_level) / (self.height - self.water_level), 0, 1)
             return (0.7 - 0.7 * val, 0.9 - 0.5 * val, 0.7 - 0.7 * val)
+
+    def export_heightmap(self, filepath: str, resolution: int = 1024) -> None:
+        """Export terrain as a grayscale heightmap image for Blender."""
+
+        # Create regular grid
+        x = np.linspace(0, self.grid_size, resolution)
+        y = np.linspace(0, self.grid_size, resolution)
+        X, Y = np.meshgrid(x, y)
+        grid_points = np.column_stack([X.ravel(), Y.ravel()])
+
+        # Interpolate altitudes onto grid
+        heights = griddata(
+            self.points,
+            self.altitudes,
+            grid_points,
+            method="cubic",
+            fill_value=0,
+        )
+        heights = heights.reshape(resolution, resolution)
+
+        # Normalize to 0-255
+        h_min, h_max = heights.min(), heights.max()
+        heights = (heights - h_min) / (h_max - h_min)
+        heights = (heights * 255).astype(np.uint8)
+
+        # Flip vertically for correct Blender orientation
+        heights = np.flipud(heights)
+
+        img = Image.fromarray(heights, mode="L")
+        img.save(filepath)
+        print(f"Heightmap saved: {filepath}")
+
+    def export_colormap(self, filepath: str, resolution: int = 1024) -> None:
+        """Export terrain colors as an RGB image for Blender texturing."""
+
+        # Create regular grid
+        x = np.linspace(0, self.grid_size, resolution)
+        y = np.linspace(0, self.grid_size, resolution)
+        X, Y = np.meshgrid(x, y)
+        grid_points = np.column_stack([X.ravel(), Y.ravel()])
+
+        # Interpolate altitudes onto grid
+        heights = griddata(
+            self.points,
+            self.altitudes,
+            grid_points,
+            method="cubic",
+            fill_value=0,
+        )
+        heights = heights.reshape(resolution, resolution)
+
+        # Generate colors from altitudes
+        colors = np.zeros((resolution, resolution, 3), dtype=np.uint8)
+        for i in range(resolution):
+            for j in range(resolution):
+                r, g, b = self.get_color(heights[i, j])
+                colors[i, j] = [int(r * 255), int(g * 255), int(b * 255)]
+
+        # Flip vertically for correct Blender orientation
+        colors = np.flipud(colors)
+
+        img = Image.fromarray(colors, mode="RGB")
+        img.save(filepath)
+        print(f"Colormap saved: {filepath}")
 
 
 def lloyd(points: np.ndarray, iterations: int = 1) -> np.ndarray:
