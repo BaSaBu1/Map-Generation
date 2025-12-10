@@ -1,0 +1,51 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "From Chaos to Continents",
+    "section": "",
+    "text": "Figure 1: FIGURE: 2D Map\n[TODO: Include final 2D map example]"
+  },
+  {
+    "objectID": "index.html#voronoi-diagram",
+    "href": "index.html#voronoi-diagram",
+    "title": "From Chaos to Continents",
+    "section": "Voronoi Diagram",
+    "text": "Voronoi Diagram\nGiven a point cloud \\(S\\) on a plane, a Voronoi Diagram partitions the plane into regions. For any given point \\(p\\), its Voronoi region consists of all points in the plane that are closer to \\(p\\) than to any other point. Mathematically, \\[\n\\text{Vor}(p) = \\{x \\in \\mathbb{R}^2 \\:| \\: \\|x-p\\| \\leq \\|x-q\\| \\text{ for all } q \\in S \\}\n\\] These regions create convex polygons that tile the plane. In the context of terrain generation, each of these Voronoi regions becomes a distinct territory: a patch of forest, a slice of ocean, or a mountain peak. To actually compute these regions in code, we turn to the dual of the Voronoi diagram: the Delaunay Triangulation."
+  },
+  {
+    "objectID": "index.html#delaunay-triangulation",
+    "href": "index.html#delaunay-triangulation",
+    "title": "From Chaos to Continents",
+    "section": "Delaunay Triangulation",
+    "text": "Delaunay Triangulation\nDelaunay Triangulation is defined as a triangulation of a set of points where no point is inside the circumcircle of any triangle. It’s mathematically linked to Voronoi Diagram. If we connect every pair of points whose Voronoi regions share an edge, we get the Delaunay Triangulation of the points. On the other hand, if we connect every pair of circumcenters whose Delaunay Triangulation share an edge, we get the Voronoi Diagram.\nFor the implementation, I used the popular existing library delaunator [2]. It computes the triangulation efficiently, allowing us to derive the Voronoi region boundaries from the triangle centers.\n\n\n\nDelaunay Triangulation and Voronoi Regions for random 100 points\n\n\nTODO: Refer to 1"
+  },
+  {
+    "objectID": "index.html#noise-scale",
+    "href": "index.html#noise-scale",
+    "title": "From Chaos to Continents",
+    "section": "Noise Scale",
+    "text": "Noise Scale\n[TODO: What does this parameter control?]\n\n\n\n\n\n\nFigure 6: FIGURE: Three terrains with different noise scales (low, medium, high)\n\n\n\nTODO: Refer to 6"
+  },
+  {
+    "objectID": "index.html#water-level",
+    "href": "index.html#water-level",
+    "title": "From Chaos to Continents",
+    "section": "Water Level",
+    "text": "Water Level\n[TODO: What does this parameter control?]\n\n\n\n\n\n\nFigure 7: FIGURE: Three terrains with different water levels\n\n\n\nTODO: Refer to 7"
+  },
+  {
+    "objectID": "index.html#island-clusters",
+    "href": "index.html#island-clusters",
+    "title": "From Chaos to Continents",
+    "section": "Island Clusters",
+    "text": "Island Clusters\n[TODO: What does this parameter control?]\n\n\n\n\n\n\nFigure 8: FIGURE: Single island vs. archipelago vs. island chain\n\n\n\nTODO: Refer to 8"
+  },
+  {
+    "objectID": "index.html#d-result",
+    "href": "index.html#d-result",
+    "title": "From Chaos to Continents",
+    "section": "3D Result",
+    "text": "3D Result\n[TODO: Describe the Blender workflow briefly]\n\n\n\n\n\n\nFigure 10: FIGURE: 3D rendered terrain in Blender\n\n\n\nTODO: Refer to 10"
+  }
+]

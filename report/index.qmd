@@ -1,0 +1,348 @@
+---
+title: "From Chaos to Continents"
+subtitle: "Procedural Terrain Generation Using Voronoi Diagrams and More"
+author: "Batsambuu Batbold"
+date: "December 2025"
+abstract: |
+  [TODO: Write your abstract here. Remember:]
+  
+  - Entice the reader—make them want more
+  - Use "we" statements, not "I"
+  - Avoid jargon and excessive symbols
+  - ~150-200 words, one paragraph
+  
+  [DELETE THIS AND WRITE YOUR ABSTRACT]
+
+bibliography: references.bib
+csl: https://www.zotero.org/styles/ieee
+fontsize: 1.2em
+format:
+  html:
+    theme: cosmo 
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    self-contained: true
+    code-tools: true
+    code-fold: true
+  revealjs:
+    theme: dark
+    slide-number: true
+    transition: slide
+    output-file: slides.html
+---
+
+![FIGURE: 2D Map](images/delaunay-voronoi.png){#fig-delaunay}
+
+[TODO: Include final 2D map example]
+
+# Introduction
+
+As a fan of open-world and simulation video games, the setting and environment are the biggest factors in deciding if a virtual world is worth my time. We, as players, expect vast, immersive, and explorable worlds that offer a unique experience. Who wants to keep coming back to the same place if it offers nothing new? However, hand-crafting these worlds is a massive undertaking. It often takes longer to build than it takes to walk across them. This is why **Procedural Content Generation** (PCG) is essential to reduce creation time and increase replayability.
+
+Every game has its own unique story and gameplay, requiring different types of worlds. Traditional PCG methods often use square grids (like Minecraft) or hexagons (like Civilization). While these are computationally easy to handle, they obviously lack a natural feel. I wanted terrain that feels organic and looks natural, but follows consistent rules to satisfy my specific vision.
+
+**I wanted *my world* to be shaped in *my way*.**
+
+In this project, we explore a way to procedurally generate a 3D terrain using computational geometry:
+
+1. First, we generate a 2D map, adapting ideas from Amit Patel's **Red Blob Games** [@patel2015polygonal] and tweaking the logic to fit our specific goals.
+2. Then, we prepare and convert the 2D map data into a heightmap for 3D terrain.
+3. Finally, we transfer the data to Blender to render and build the cinematic world.
+
+---
+
+# Stage 1: Chaos
+
+It all starts with the chaos of random points.
+
+To generate a 2D map, we first need small cells that essentially serve as the "pixels" or building blocks of our world. However, as mentioned earlier, usual square and hexagonal grids don’t result in realistic looking landscapes. Using polygons of varying shapes helps us generate a map that feels less engineered and more organic.
+
+So, we call upon our old friend: the **Voronoi Diagram**.
+
+## Voronoi Diagram
+
+Given a point cloud $S$ on a plane, a Voronoi Diagram partitions the plane into regions. For any given point $p$, its Voronoi region consists of all points in the plane that are closer to $p$ than to any other point. Mathematically:
+
+$$
+\text{Vor}(p) = \{x \in \mathbb{R}^2 \:| \: \|x-p\| \leq \|x-q\| \text{ for all } q \in S \}
+$$
+
+These regions create convex polygons that tile the plane. In the context of terrain generation, each of these Voronoi regions becomes a distinct territory: a patch of forest, a slice of ocean, or a mountain peak. To actually compute these regions in code, we turn to the dual of the Voronoi diagram: the **Delaunay Triangulation**.
+
+## Delaunay Triangulation
+
+Delaunay Triangulation is defined as a triangulation of a set of points where no point is inside the circumcircle of any triangle. It is mathematically linked to the Voronoi Diagram via duality. If we connect every pair of points whose Voronoi regions share an edge, we get the Delaunay Triangulation. Conversely, the circumcenters of the Delaunay triangles serve as the vertices of the Voronoi diagram.
+
+For the implementation, I used the popular existing library `delaunator` [@delaunator]. It computes the triangulation efficiently, allowing us to derive the Voronoi region boundaries from the triangle centers.
+
+![Delaunay Triangulation and Voronoi Regions for 100 random points.](figures/voronoi-delaunay.png){#fig-vor-del}
+
+As seen in @fig-vor-del, the polygons look nice and random. However, they might be *too random*. True randomness is clumpy. We end up with tiny slivers of polygons right next to massive, stretched-out ones. This is too chaotic to be a skeleton for a game world. We want the terrain to be somewhat smoother and more uniform, mimicking the organic beauty of nature. To fix the clumping, we use **Lloyd's Relaxation** [@lloyd_wolfram], also known as Voronoi iteration.
+
+## Lloyd's Relaxation
+
+Lloyd's Relaxation is a simple algorithm that moves the random points to space them out evenly:
+
+1. Compute the Voronoi Diagram of the current points.
+2. Calculate the centroid of each Voronoi region.
+3. Move the point to that centroid.
+4. Repeat.
+
+By repeating this process a few times, the points naturally space themselves out. After each iteration, the Voronoi cells become more uniform, ultimately resembling a turtle shell like pattern. I used the existing package `lloyd` [@lloyd_repo] to handle this calculation.
+
+![Lloyd's Relaxation after 1 and 3 iterations. Typically, 2–3 iterations are sufficient to stabilize the mesh.](figures/lloyd-relaxation.png){#fig-lloyd}
+
+Now, our grid is done, and it's time to create the land.
+
+---
+
+# Stage 2: Creation
+
+We have our grid, which acts as the skeleton of our world. Now, we need to assign which tiles are land and which are ocean. To do this, I assign an altitude value to every Voronoi region. If the altitude is higher than a user-defined water level threshold, it becomes a land tile; otherwise, it is an ocean tile.
+
+Again, we want the land to look natural. However, there is a huge problem with randomly assigning altitude. If we were to do that, the world would look like "TV static" because every tile would be independent of its neighbors. A deep ocean tile might sit right next to a high mountain peak, which is physically impossible. Real terrain is continuous and gradual: mountains roll into hills, and coastlines gradually descend into the ocean.
+
+We need **smooth randomness**. To solve this, we use **Perlin Noise** [@perlin1985].
+
+## Perlin Noise
+
+Perlin Noise is an algorithm invented by Ken Perlin to generate natural-looking textures for movies. In 1997, Perlin received an Academy Award (Scientific and Technical Achievement) for the development of this algorithm [@oscar_perlin].
+
+Unlike standard random numbers, Perlin noise is coherent. If you pick a point on a Perlin noise map, the neighbor points around it will have very similar values, creating gradual transitions.
+
+![Side-by-side comparison: White noise (left) looks like static, while Perlin noise (right) looks like clouds or terrain.](figures/noise-comparison.png){#fig-noise}
+
+As seen in @fig-noise, the algorithm results in a cloud-like pattern that already looks like a map. For the implementation, I used the Python package **pnoise** [@pnoise].
+
+After assigning Perlin noise as a base altitude, I made some customizations to shape the world exactly how I wanted. Raw Perlin noise doesn't inherently know where an "island" should be. To fix this, I implemented a two-step shaping process:
+
+* **Island Centers**: I first scatter a specific number of "mountain peaks" (island centers) randomly across the grid. To ensure the land clusters around these peaks, I apply a distance penalty: the further a tile is from a mountain center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent.
+
+* **The Power Curve**: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.
+```{python}
+#| eval: false
+#| code-fold: true
+#| code-summary: "Show Python Implementation"
+
+def assignAltitudes(self):
+    """Generate terrain using Perlin noise masked by distance to island centers."""
+    # 1. Generate raw Perlin noise
+    scaled_pts = self.points / self.grid_size * self.noise_scale
+    noise_vals = np.array([(pnoise2(x, y, octaves=6) + 1) / 2 
+                        for x, y in scaled_pts])
+    
+    # 2. Randomly place the "centers" of our islands
+    island_centers = np.random.uniform(0.2, 0.8, (self.cluster, 2)) * self.grid_size
+    
+    # 3. Calculate distance from every point to the nearest island center
+    all_dists = np.array([np.linalg.norm(self.points - c, axis=1) for c in island_centers])
+    distances = np.min(all_dists, axis=0)
+    normalized_dists = distances / (self.grid_size / 2)
+    
+    # 4. Apply the Distance Penalty (The "Island Mask")
+    # This subtracts height based on how far we are from the center
+    base_alt = noise_vals - normalized_dists ** 2
+    
+    # 5. Apply the Power Curve
+    land_mask = base_alt > self.water_level
+    self.altitudes = base_alt.copy()
+    
+    if np.any(land_mask):
+        land_vals = base_alt[land_mask]
+        # Normalize land to 0.0 - 1.0 range
+        land_normalized = (land_vals - self.water_level) / (1.0 - self.water_level)
+        land_normalized = np.clip(land_normalized, 0, 1)
+        
+        # Piecewise function for terrain profile:
+        # - Bottom 30%: Flat slopes (Beaches)
+        # - Top 70%: Exponential growth (Sharp Peaks)
+        sharpened = np.where(
+            land_normalized < 0.3, 
+            land_normalized * 0.5, 
+            0.15 + (land_normalized - 0.3) ** 1.7 * 3 
+        )
+        self.altitudes[land_mask] = self.water_level + sharpened * (1.0 - self.water_level)
+```
+
+
+## Biome Assignment
+
+With the heightmap complete, we have a basic definition of land and sea.
+
+![Land and Ocean tiles are assigned](figures/land_ocean.png){#fig-land-ocean}
+@fig-land-ocean is a convincing start, it resembles a landmass. However, the land is monochromatic and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. 
+
+Our initial strategy relied solely on altitude. While altitude separates ocean from land, it isn't enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:
+
+* **Proximity to water**: Tiles closer to the ocean received a moisture boost.
+* **Elevation Adjustment**: High-altitude areas generally became drier, though I added a special exception to ensure the very highest peaks retained enough "moisture" value to support snow caps.
+
+By combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a classification similar to Red Blob Games [@patel2015polygonal], resulting in 10 distinct biome types. For example:
+
+* High Altitude + Low Moisture $\rightarrow$ Scorched / Rocky Mountain
+* High Altitude + High Moisture $\rightarrow$ Snow
+* Mid Altitude + High Moisture $\rightarrow$ Forest
+* Low Altitude + Low Moisture $\rightarrow$ Desert
+
+```{python}
+#| eval: false
+#| code-fold: true
+#| code-summary: "Show Classification Logic"
+
+def get_biome_color(self, e, m):
+    """
+    Returns color based on elevation (e) and moisture (m).
+    Both e and m are normalized to 0.0 - 1.0.
+    """
+    
+    # ZONE 1: COAST & BEACH (Very low elevation)
+    if e < 0.08:
+        return self.BIOME_COLORS['BEACH']
+    
+    # ZONE 2: HIGH PEAKS (Guaranteed Snow)
+    if e > 0.75:
+        return self.BIOME_COLORS['SNOW']
+    
+    # ZONE 3: MOUNTAIN LEVEL (High elevation)
+    if e > 0.50:
+        if m < 0.4: return self.BIOME_COLORS['MOUNTAIN'] # Scorched
+        if m < 0.7: return self.BIOME_COLORS['TUNDRA']   # Bare
+        return self.BIOME_COLORS['SNOW']                 # Snowy
+    
+    # ZONE 4: BOREAL LEVEL (Upper-mid elevation)
+    if e > 0.35:
+        if m < 0.4: return self.BIOME_COLORS['GRASSLAND']
+        return self.BIOME_COLORS['TAIGA']                # Pine Forest
+    
+    # ZONE 5: TEMPERATE LEVEL (Mid elevation)
+    if e > 0.25:
+        if m < 0.3: return self.BIOME_COLORS['DESERT']
+        if m < 0.6: return self.BIOME_COLORS['GRASSLAND']
+        return self.BIOME_COLORS['FOREST']               # Deciduous
+    
+    # ZONE 6: TROPICAL LEVEL (Low elevation)
+    if m < 0.3: return self.BIOME_COLORS['DESERT']
+    if m < 0.6: return self.BIOME_COLORS['GRASSLAND']
+    return self.BIOME_COLORS['RAINFOREST']
+```
+
+
+![Terrain with biome colorings](figures/biomes.png){#fig-biomes}
+
+As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches are around the coastline, green forests fill midlands, and white snow cap the highest peaks in the center.
+
+---
+
+## 2D Interactive Playground
+
+Up this point, I'm happy with my 2D map. Debugging and tuning parameters according to my need takes a lot of small changes and tweaks, and it was little annoying to rerun the program everytime I changed a number by 0.1. So, I decided to make an app where I can see the changes in real time without exiting and rerunning the program everytime. Since, I already made the app, I decide to make it public and host it in streamlit, which the link is here.
+
+![FIGURE: Screenshot of the Streamlit app with sidebar controls](images/streamlit-app.png){#fig-app}
+
+[TODO: Refer to @fig-app. Highlight the interactive controls.]
+
+[TODO: Mention it's available online / how to run it]
+
+---
+
+# Effect of Parameters
+
+## Noise Scale
+
+[TODO: What does this parameter control?]
+
+![FIGURE: Three terrains with different noise scales (low, medium, high)](images/noise-scale-effect.png){#fig-noise-scale}
+
+[TODO: Refer to @fig-noise-scale. Describe what changes.]
+
+## Water Level
+
+[TODO: What does this parameter control?]
+
+![FIGURE: Three terrains with different water levels](images/water-level-effect.png){#fig-water-level}
+
+[TODO: Refer to @fig-water-level. Describe what changes.]
+
+## Island Clusters
+
+[TODO: What does this parameter control?]
+
+![FIGURE: Single island vs. archipelago vs. island chain](images/cluster-effect.png){#fig-clusters}
+
+[TODO: Refer to @fig-clusters. Describe what changes.]
+
+---
+
+# Transfer to 3D
+
+[TODO: How did you take the 2D map into Blender?]
+
+[TODO: Explain the heightmap export process]
+
+![FIGURE: The exported heightmap (grayscale) and colormap](images/heightmap-colormap.png){#fig-export}
+
+[TODO: Refer to @fig-export. Explain what each image represents.]
+
+## 3D Result
+
+[TODO: Describe the Blender workflow briefly]
+
+![FIGURE: 3D rendered terrain in Blender](images/3d-terrain.png){#fig-3d}
+
+[TODO: Refer to @fig-3d. What does the 3D version reveal that 2D didn't?]
+
+---
+
+# Key Insights
+
+[TODO: What did you learn from this project?]
+
+[TODO: What surprised you?]
+
+[TODO: What are the most important takeaways?]
+
+---
+
+# Limitations
+
+[TODO: What are the limitations of your approach?]
+
+[TODO: What doesn't work well? Edge cases?]
+
+[TODO: Computational cost?]
+
+---
+
+# Future Work
+
+[TODO: What would you add with more time?]
+
+Ideas to consider:
+
+- Rivers and watersheds
+- More realistic biomes (temperature + moisture)
+- Erosion simulation
+- City/road placement
+- Real-time 3D rendering
+
+---
+
+# Conclusion
+
+[TODO: Tie back to your intro. What problem did you solve?]
+
+[TODO: Summarize the key contributions]
+
+[TODO: End with a strong final statement about procedural generation]
+
+# Note
+
+All code and project files are available at the GitHub repository:
+
+---
+
+# References
+
+::: {#refs}
+:::
