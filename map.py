@@ -18,6 +18,7 @@ from noise import pnoise2
 from scipy.interpolate import griddata
 from PIL import Image
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "lloyd"))
 from lloyd import Field
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "Delaunator-Python"))
