@@ -8,7 +8,12 @@ Date: December 2025
 """
 
 import time
+import os
 import numpy as np
+import sys
+
+# Add parent directory to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from map import Map
 
 # Configuration
@@ -17,10 +22,12 @@ NUM_POINTS = 100000
 NOISE_SCALE = 4.0
 WATER_LEVEL = 0.35
 CLUSTERS = 5
-RESOLUTION = 1024       
+RESOLUTION = 1024
 
-OUTPUT_HEIGHTMAP = "heightmap.png"
-OUTPUT_COLORMAP = "colormap.png"
+# Output paths
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "outputs")
+OUTPUT_HEIGHTMAP = os.path.join(OUTPUT_DIR, "heightmap.png")
+OUTPUT_COLORMAP = os.path.join(OUTPUT_DIR, "colormap.png")
 
 
 def main() -> None:
