@@ -12,6 +12,9 @@ Date: December 2025
 import sys
 import os
 
+# Add Delaunator to path BEFORE importing
+sys.path.append(os.path.join(os.path.dirname(__file__), "Delaunator-Python"))
+
 import numpy as np
 from matplotlib.collections import PolyCollection
 from noise import pnoise2
@@ -19,8 +22,6 @@ from scipy.interpolate import griddata
 from PIL import Image
 
 from lloyd import Field
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "Delaunator-Python"))
 from Delaunator import Delaunator
 
 
