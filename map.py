@@ -12,8 +12,9 @@ Date: December 2025
 import sys
 import os
 
-# Add Delaunator to path BEFORE importing
+# Add external libraries to path BEFORE importing
 sys.path.append(os.path.join(os.path.dirname(__file__), "Delaunator-Python"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "lloyd"))
 
 import numpy as np
 from matplotlib.collections import PolyCollection
