@@ -12,12 +12,12 @@ import numpy as np
 from map import Map
 
 # Configuration
-SEED = 6773
-NUM_POINTS = 25000
-NOISE_SCALE = 5.0
+SEED = 44536
+NUM_POINTS = 100000
+NOISE_SCALE = 4.0
 WATER_LEVEL = 0.35
 CLUSTERS = 5
-RESOLUTION = 1024 
+RESOLUTION = 1024       
 
 OUTPUT_HEIGHTMAP = "heightmap.png"
 OUTPUT_COLORMAP = "colormap.png"

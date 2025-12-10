@@ -3,6 +3,16 @@ Procedural Map Generator - Streamlit Web Application
 
 Interactive terrain generation using Voronoi diagrams and Perlin noise.
 
+Usage:
+    streamlit run app.py
+
+Requirements:
+    - streamlit
+    - numpy
+    - matplotlib
+    - noise
+    - scipy
+
 Author: Batsambuu Batbold
 Date: December 2025
 """
@@ -32,15 +42,35 @@ st.markdown(
 )
 
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def generate_map_figure(
     seed: int,
     num_points: int = 2000,
     noise_scale: float = 3.0,
-    water_level: float = 0.4,
+    water_level: float = 0.35,
     clusters: int = 5,
 ) -> plt.Figure:
-    """Generate terrain and return a matplotlib figure."""
+    """
+    Generate terrain and return a matplotlib figure.
+    
+    Args:
+        seed: Random seed for reproducibility
+        num_points: Number of Voronoi sites
+        noise_scale: Perlin noise frequency (1-10)
+        water_level: Ocean/land threshold (0-0.8)
+        clusters: Number of island centers
+        
+    Returns:
+        Matplotlib figure containing the rendered terrain
+        
+    Raises:
+        ValueError: If parameters are out of valid ranges
+    """
+    if not (0 <= water_level <= 0.8):
+        raise ValueError("Water level must be between 0 and 0.8")
+    if not (1 <= noise_scale <= 10):
+        raise ValueError("Noise scale must be between 1 and 10")
+    
     np.random.seed(seed)
     points = np.random.rand(num_points, 2)
     terrain = Map(
@@ -51,13 +81,13 @@ def generate_map_figure(
         cluster=clusters,
     )
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=100)
     ax.set_aspect("equal")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
     terrain.plotLand(ax)
-    plt.tight_layout()
+    plt.tight_layout(pad=0)
 
     return fig
 
@@ -66,8 +96,19 @@ def main() -> None:
     """Main application entry point."""
     st.title("🗺️ Procedural Map Generator")
     st.markdown(
-        "*Generate infinite unique worlds using Voronoi diagrams and Perlin noise*"
+        "*Generate unique worlds using Voronoi diagrams, Lloyd's relaxation, and Perlin noise*"
     )
+    
+    # Info expander
+    with st.expander("ℹ️ About This Project"):
+        st.markdown("""
+        This application generates procedural terrain maps using computational geometry:
+        
+        - **Voronoi Diagrams**: Partition space into regions
+        - **Lloyd's Relaxation**: Creates uniform point distribution
+        - **Perlin Noise**: Generates natural-looking elevation
+        - **Biome System**: 10 distinct biomes based on elevation and moisture
+        """)
 
     # Sidebar controls
     with st.sidebar:
@@ -89,14 +130,14 @@ def main() -> None:
             max_value=10.0,
             value=3.0,
             step=0.5,
-            help="Higher = more detailed terrain features",
+            help="Higher = more detailed, but chaotic terrain features",
         )
 
         water_level = st.slider(
             "🌊 Water Level",
             min_value=0.0,
             max_value=0.8,
-            value=0.4,
+            value=0.35,
             step=0.05,
             help="Higher = more ocean, less land",
         )
@@ -124,20 +165,27 @@ def main() -> None:
         st.caption("Batsambuu Batbold | December 2025")
 
     # Map display
-    with st.spinner("Generating terrain..."):
-        fig = generate_map_figure(
-            seed=seed,
-            num_points=num_points,
-            noise_scale=noise_scale,
-            water_level=water_level,
-            clusters=clusters,
-        )
-        
-        col1, col2, col3 = st.columns([1, 3, 1])
-        with col2:
-            st.pyplot(fig, use_container_width=True)
-        
-        plt.close(fig)
+    try:
+        with st.spinner("🌍 Generating terrain..."):
+            fig = generate_map_figure(
+                seed=seed,
+                num_points=num_points,
+                noise_scale=noise_scale,
+                water_level=water_level,
+                clusters=clusters,
+            )
+            
+            col1, col2, col3 = st.columns([1, 3, 1])
+            with col2:
+                st.pyplot(fig, use_container_width=True)
+            
+            # Performance info
+            st.caption(f"✓ Generated with {num_points:,} points | Seed: {seed}")
+            
+            plt.close(fig)
+    except Exception as e:
+        st.error(f"❌ Error generating map: {str(e)}")
+        st.info("Try adjusting the parameters or using a different seed.")
 
 
 if __name__ == "__main__":
