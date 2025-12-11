@@ -1,18 +1,33 @@
 """
 Procedural Terrain Map Generation Module.
 
-Generates 2D Voronoi-based terrain maps using Lloyd's relaxation and Perlin noise.
+This module provides the core 2D terrain generation algorithm using computational
+geometry techniques. It combines Voronoi diagrams, Lloyd's relaxation, and 
+Perlin noise to create realistic procedural terrain maps with biome-based 
+coloring.
+
+Key Features:
+    - Voronoi-based region partitioning using Delaunay triangulation
+    - Lloyd's relaxation for uniform point distribution
+    - Multi-octave Perlin noise for natural elevation and moisture patterns
+    - Export utilities for heightmaps and colormaps (Blender integration)
+
+Example:
+    >>> import numpy as np
+    >>> from map import Map
+    >>> points = np.random.rand(1000, 2)
+    >>> terrain = Map(points, water_level=0.35, noise_scale=3.0)
+    >>> fig, ax = plt.subplots()
+    >>> terrain.plotLand(ax)
 
 Author: Batsambuu Batbold
+Course: MATH 437 - Computational Geometry
 Date: December 2025
 """
-
-# TODO: Rivers, Trees
 
 import sys
 import os
 
-# Add external libraries to path BEFORE importing
 sys.path.append(os.path.join(os.path.dirname(__file__), "Delaunator-Python"))
 sys.path.append(os.path.join(os.path.dirname(__file__), "lloyd"))
 
@@ -28,18 +43,32 @@ from Delaunator import Delaunator
 
 class Map:
     """
-    Procedurally generated terrain map based on Voronoi diagrams.
+    Procedurally generated terrain map using Voronoi diagrams.
+    
+    This class generates terrain by:
+    1. Applying Lloyd's relaxation for uniform point distribution
+    2. Computing Delaunay triangulation and dual Voronoi diagram
+    3. Assigning elevation using Perlin noise with island masking
+    4. Assigning moisture for biome classification
     
     Attributes:
-        grid_size: Map dimensions.
-        water_level: Altitude threshold for water vs land.
-        noise_scale: Perlin noise frequency.
-        cluster: Number of island clusters.
-        height, depth: Color gradient ranges for land/water.
-        points: Voronoi site coordinates.
-        triangles: Delaunay triangulation indices.
-        centers: Voronoi vertices (triangle circumcenters).
-        altitudes: Terrain height per region.
+        grid_size (float): Map dimensions (default 1.0 for unit square).
+        water_level (float): Altitude threshold separating ocean from land.
+        noise_scale (float): Perlin noise frequency multiplier.
+        cluster (int): Number of island center points.
+        points (np.ndarray): Voronoi site coordinates after relaxation.
+        triangles (np.ndarray): Delaunay triangulation vertex indices.
+        centers (np.ndarray): Voronoi vertices (triangle circumcenters).
+        altitudes (np.ndarray): Terrain elevation per region.
+        moisture (np.ndarray): Moisture level per region for biome selection.
+        polygons (list): Voronoi cell vertices for rendering.
+    
+    Args:
+        p: Initial random points as (N, 2) array.
+        size: Map size (default 1.0).
+        water_level: Ocean threshold (default 0.4).
+        noise_scale: Noise frequency (default 3).
+        cluster: Island count (default 4).
     """
 
     def __init__(self, p, size=1, water_level=0.4, noise_scale=3, cluster=4):
@@ -70,6 +99,7 @@ class Map:
 
     def _build_polygons(self):
         """Compute Voronoi polygon vertices for each region."""
+        # Build index: map each point to one of its incoming halfedges
         index = np.full(self.numRegions, -1, dtype=int)
         for e in range(len(self.halfedges)):
             start_point = self.triangles[e]
@@ -83,22 +113,24 @@ class Map:
             if index[i] == -1:
                 continue
             
+            # Walk around the Voronoi cell by traversing halfedges
             vertices = []
             e0 = index[i]
             e = e0
             
             while True:
-                t = e // 3
-                vertices.append(self.centers[t])
+                t = e // 3  # Triangle index from halfedge
+                vertices.append(self.centers[t])  # Circumcenter = Voronoi vertex
                 
+                # Navigate to previous edge in triangle, then jump to opposite
                 prev_e = e - 1 if e % 3 != 0 else e + 2
                 opp_e = self.halfedges[prev_e]
                 
-                if opp_e == -1:
+                if opp_e == -1:  # Boundary edge - incomplete polygon
                     break
                 
                 e = opp_e
-                if e == e0:
+                if e == e0:  # Completed the loop
                     break
             
             if len(vertices) > 2:
@@ -106,40 +138,53 @@ class Map:
                 self.polygon_indices.append(i)
 
     def assignAltitudes(self):
-        """Generate terrain using Perlin noise masked by distance to island centers."""
-        # Vectorized noise
+        """
+        Generate terrain elevation using Perlin noise with island masking.
+        
+        The algorithm combines multi-octave Perlin noise with distance-based
+        falloff from randomly placed island centers. A power curve is applied
+        to create gentle coastal slopes transitioning to steeper mountain peaks.
+        """
         scaled_pts = self.points / self.grid_size * self.noise_scale
         noise_vals = np.array([(pnoise2(x, y, octaves=6) + 1) / 2 
                             for x, y in scaled_pts])
         
-        # Generate island centers
+        # Randomly place island centers (avoiding edges)
         island_centers = np.random.uniform(0.2, 0.8, (self.cluster, 2)) * self.grid_size
         
-        # Vectorized distance to nearest island center
+        # Distance falloff: points far from island centers become ocean
         all_dists = np.array([np.linalg.norm(self.points - c, axis=1) for c in island_centers])
-        distances = np.min(all_dists, axis=0)
+        distances = np.min(all_dists, axis=0)  # Distance to nearest island center
         normalized_dists = distances / (self.grid_size / 2)
         
-        # Base altitude
+        # Combine noise with distance mask (quadratic falloff)
         base_alt = noise_vals - normalized_dists ** 2
         
-        # Power curve
+        # Apply power curve to land for realistic elevation profile
         land_mask = base_alt > self.water_level
         self.altitudes = base_alt.copy()
         land_vals = base_alt[land_mask]
         land_normalized = (land_vals - self.water_level) / (1.0 - self.water_level)
         land_normalized = np.clip(land_normalized, 0, 1)
+        
+        # Piecewise curve: gentle near coast, steeper inland for mountains
         sharpened = np.where(
-            land_normalized < 0.3, # % of low altitude land
-            land_normalized * 0.5, # gentle slope near water
-            0.15 + (land_normalized - 0.3) ** 1.7 * 4 # steeper inland, the power controls steepness, multiplier controls max height
+            land_normalized < 0.35,
+            land_normalized * 0.8,  # Gentle coastal slope
+            0.28 + (land_normalized - 0.35) ** 1.3 * 3  # Steeper mountain peaks
         )
         self.altitudes[land_mask] = self.water_level + sharpened * (1.0 - self.water_level)
 
     def assignMoisture(self):
-        """Generate moisture using Perlin noise with different frequency/offset."""
-        # Use different noise coordinates to get independent moisture pattern
-        offset = 500  # Offset to get different noise pattern
+        """
+        Generate moisture values using Perlin noise for biome classification.
+        
+        Uses a separate noise pattern offset from elevation. Moisture is adjusted
+        based on altitude: water regions are fully moist, mid-elevations are drier,
+        and high peaks retain moisture for snow accumulation.
+        """
+        # Use offset coordinates for independent noise pattern
+        offset = 500
         scaled_pts = self.points / self.grid_size * self.noise_scale * 1.5
         
         self.moisture = np.array([
@@ -147,20 +192,17 @@ class Map:
             for x, y in scaled_pts
         ])
         
-        # Adjust moisture based on altitude
+        # Adjust moisture based on elevation for realistic biome distribution
         for i in range(len(self.moisture)):
             if self.altitudes[i] < self.water_level:
-                self.moisture[i] = 1.0  # Water is fully "moist"
+                self.moisture[i] = 1.0  # Ocean is fully moist
             else:
-                # Normalize land altitude
                 land_height = (self.altitudes[i] - self.water_level) / (1.0 - self.water_level)
-                
-                # Mid-elevation mountains are drier, but high peaks can trap snow
                 if land_height < 0.7:
-                    # Reduce moisture for mid-elevations
+                    # Rain shadow effect: higher elevation = drier
                     self.moisture[i] *= (1.0 - land_height * 0.25)
                 else:
-                    # High peaks: boost moisture for snow accumulation
+                    # High peaks trap moisture for snow
                     self.moisture[i] = min(1.0, self.moisture[i] * 1.5)
 
     def plotLand(self, ax):
@@ -185,9 +227,10 @@ class Map:
                 'b-', linewidth=0.5, alpha=0.5)
 
     def _get_circumcenters(self):
-        """Calculate circumcenters for all triangles."""
+        """Calculate circumcenters for all triangles (Voronoi vertices)."""
         tri_indices = self.triangles.reshape(-1, 3)
         
+        # Extract triangle vertices
         p1 = self.points[tri_indices[:, 0]]
         p2 = self.points[tri_indices[:, 1]]
         p3 = self.points[tri_indices[:, 2]]
@@ -196,8 +239,9 @@ class Map:
         bx, by = p2[:, 0], p2[:, 1]
         cx, cy = p3[:, 0], p3[:, 1]
         
+        # Circumcenter formula: intersection of perpendicular bisectors
         d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-        d[d == 0] = 1.0  # Avoid division by zero for collinear points
+        d[d == 0] = 1.0  # Handle collinear points
         
         a_sq = ax**2 + ay**2
         b_sq = bx**2 + by**2
@@ -208,71 +252,59 @@ class Map:
         
         return np.column_stack((ux, uy))
 
-    # Biome color palette - Sharp, artistic, vibrant colors
     BIOME_COLORS = {
-        'OCEAN':        (0.05, 0.30, 0.65),  # Vivid deep blue
-        'BEACH':        (0.95, 0.90, 0.65),  # Bright golden sand
-        'DESERT':       (0.98, 0.85, 0.55),  # Warm saturated tan
-        'GRASSLAND':    (0.45, 0.85, 0.30),  # Vibrant lime green
-        'FOREST':       (0.15, 0.55, 0.20),  # Rich emerald green
-        'RAINFOREST':   (0.08, 0.45, 0.18),  # Deep jungle green
-        'TAIGA':        (0.25, 0.50, 0.35),  # Cool forest green
-        'TUNDRA':       (0.75, 0.70, 0.50),  # Warm earthy tan
-        'MOUNTAIN':     (0.50, 0.40, 0.30),  # Rich brown stone
-        'SNOW':         (0.98, 0.98, 1.00),  # Brilliant white
+        'OCEAN':        (0.05, 0.30, 0.65),
+        'BEACH':        (0.95, 0.90, 0.65),
+        'DESERT':       (0.98, 0.85, 0.55),
+        'GRASSLAND':    (0.45, 0.85, 0.30),
+        'FOREST':       (0.15, 0.55, 0.20),
+        'RAINFOREST':   (0.08, 0.45, 0.18),
+        'TAIGA':        (0.25, 0.50, 0.35),
+        'TUNDRA':       (0.75, 0.70, 0.50),
+        'MOUNTAIN':     (0.50, 0.40, 0.30),
+        'SNOW':         (0.98, 0.98, 1.00),
     }
+    """RGB color palette for each biome type."""
 
     def get_color(self, alt: float, moisture: float) -> tuple:
         """
-        Map altitude and moisture to RGB color based on 10 distinct biomes.
+        Map altitude and moisture to RGB color using Whittaker biome classification.
         
-        Elevation zones (low → high):
-            - Low: Ocean, Beach, Desert/Grassland/Rainforest (tropical)
-            - Mid: Desert/Grassland/Forest (temperate)
-            - Upper-mid: Taiga (boreal forest)
-            - High: Tundra, Mountain, Snow
+        Args:
+            alt: Elevation value.
+            moisture: Moisture value (0-1).
+            
+        Returns:
+            RGB tuple (r, g, b) with values in range [0, 1].
         """
-        # Normalize altitude: 0 = water level, 1 = max land
         if alt < self.water_level:
             return self.BIOME_COLORS['OCEAN']
         
-        # Normalize land elevation (0 to 1)
         max_land = 0.25
         e = (alt - self.water_level) / max_land
         e = np.clip(e, 0, 1)
         m = np.clip(moisture, 0, 1)
         
-        # Beach zone (very low elevation)
-        if e < 0.08:
+        if e < 0.1:
             return self.BIOME_COLORS['BEACH']
-        
-        # Highest peaks always snow (guarantee snow on tallest mountains)
-        if e > 0.75:
+        if e > 0.85:
             return self.BIOME_COLORS['SNOW']
-        
-        # High elevation (mountains)
-        if e > 0.50:
+        if e > 0.60:
             if m < 0.4:
                 return self.BIOME_COLORS['MOUNTAIN'] 
             if m < 0.7:
                 return self.BIOME_COLORS['TUNDRA']    
             return self.BIOME_COLORS['SNOW']          
-        
-        # Upper-mid elevation (boreal)
         if e > 0.35:
             if m < 0.4:
                 return self.BIOME_COLORS['GRASSLAND']  
             return self.BIOME_COLORS['TAIGA']          
-        
-        # Mid elevation (temperate)
         if e > 0.25:
             if m < 0.3:
                 return self.BIOME_COLORS['DESERT']    
             if m < 0.6:
                 return self.BIOME_COLORS['GRASSLAND']  
             return self.BIOME_COLORS['FOREST']       
-        
-        # Low elevation (tropical)
         if m < 0.3:
             return self.BIOME_COLORS['DESERT']        
         if m < 0.6:
@@ -280,15 +312,21 @@ class Map:
         return self.BIOME_COLORS['RAINFOREST']        
 
     def export_heightmap(self, filepath: str, resolution: int = 1024) -> None:
-        """Export terrain as a grayscale heightmap image for Blender."""
-
-        # Create regular grid
+        """
+        Export terrain as a grayscale heightmap image.
+        
+        Creates a PNG image where pixel intensity represents elevation,
+        suitable for displacement mapping in 3D applications like Blender.
+        
+        Args:
+            filepath: Output file path.
+            resolution: Image dimensions (default 1024x1024).
+        """
         x = np.linspace(0, self.grid_size, resolution)
         y = np.linspace(0, self.grid_size, resolution)
         X, Y = np.meshgrid(x, y)
         grid_points = np.column_stack([X.ravel(), Y.ravel()])
 
-        # Interpolate altitudes onto grid
         heights = griddata(
             self.points,
             self.altitudes,
@@ -298,12 +336,9 @@ class Map:
         )
         heights = heights.reshape(resolution, resolution)
 
-        # Normalize to 0-255
         h_min, h_max = heights.min(), heights.max()
         heights = (heights - h_min) / (h_max - h_min)
         heights = (heights * 255).astype(np.uint8)
-
-        # Flip vertically for correct Blender orientation
         heights = np.flipud(heights)
 
         img = Image.fromarray(heights, mode="L")
@@ -311,15 +346,21 @@ class Map:
         print(f"Heightmap saved: {filepath}")
 
     def export_colormap(self, filepath: str, resolution: int = 1024) -> None:
-        """Export terrain colors as an RGB image for Blender texturing."""
-
-        # Create regular grid
+        """
+        Export terrain biome colors as an RGB image.
+        
+        Creates a PNG image with biome-based coloring for use as a
+        diffuse texture in 3D applications.
+        
+        Args:
+            filepath: Output file path.
+            resolution: Image dimensions (default 1024x1024).
+        """
         x = np.linspace(0, self.grid_size, resolution)
         y = np.linspace(0, self.grid_size, resolution)
         X, Y = np.meshgrid(x, y)
         grid_points = np.column_stack([X.ravel(), Y.ravel()])
 
-        # Interpolate altitudes onto grid
         heights = griddata(
             self.points,
             self.altitudes,
@@ -329,7 +370,6 @@ class Map:
         )
         heights = heights.reshape(resolution, resolution)
 
-        # Interpolate moisture onto grid
         moistures = griddata(
             self.points,
             self.moisture,
@@ -339,14 +379,12 @@ class Map:
         )
         moistures = moistures.reshape(resolution, resolution)
 
-        # Generate colors from altitudes and moisture
         colors = np.zeros((resolution, resolution, 3), dtype=np.uint8)
         for i in range(resolution):
             for j in range(resolution):
                 r, g, b = self.get_color(heights[i, j], moistures[i, j])
                 colors[i, j] = [int(r * 255), int(g * 255), int(b * 255)]
 
-        # Flip vertically for correct Blender orientation
         colors = np.flipud(colors)
 
         img = Image.fromarray(colors, mode="RGB")
@@ -355,7 +393,16 @@ class Map:
 
 
 def lloyd(points: np.ndarray, iterations: int = 1) -> np.ndarray:
-    """Apply Lloyd's relaxation for uniform point distribution."""
+    """
+    Apply Lloyd's relaxation algorithm for uniform point distribution.
+    
+    Args:
+        points: Initial point positions as (N, 2) array.
+        iterations: Number of relaxation iterations.
+        
+    Returns:
+        Relaxed point positions as (N, 2) array.
+    """
     field = Field(points)
     for _ in range(iterations):
         field.relax()

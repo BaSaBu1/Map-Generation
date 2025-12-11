@@ -25,11 +25,6 @@ format:
     self-contained: true
     code-tools: true
     code-fold: true
-  revealjs:
-    theme: dark
-    slide-number: true
-    transition: slide
-    output-file: slides.html
 ---
 
 ![FIGURE: 2D Map](images/delaunay-voronoi.png){#fig-delaunay}
@@ -170,8 +165,9 @@ def assignAltitudes(self):
 
 With the heightmap complete, we have a basic definition of land and sea.
 
-![Land and Ocean tiles are assigned](figures/land_ocean.png){#fig-land-ocean}
-@fig-land-ocean is a convincing start, it resembles a landmass. However, the land is monochromatic and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. 
+![Land and Ocean tiles are assigned](figures/land.png){#fig-land}
+
+@fig-land is a convincing start, it resembles a landmass. However, the land is monochromatic and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. 
 
 Our initial strategy relied solely on altitude. While altitude separates ocean from land, it isn't enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:
 
@@ -236,45 +232,27 @@ As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches ar
 
 ## 2D Interactive Playground
 
-Up this point, I'm happy with my 2D map. Debugging and tuning parameters according to my need takes a lot of small changes and tweaks, and it was little annoying to rerun the program everytime I changed a number by 0.1. So, I decided to make an app where I can see the changes in real time without exiting and rerunning the program everytime. Since, I already made the app, I decide to make it public and host it in streamlit, which the link is here.
+Up to this point, I was happy with the logic of my 2D map. However, tuning the parameters to get the exact look I wanted required endless tweaking. It became incredibly annoying to re-run the entire script every time I wanted to change a noise value by $0.1$. So, I built an interactive dashboard to visualize the changes in real-time. Since the tool was so useful for debugging, I decided to host it publicly on Streamlit so you can try it yourself.
 
-![FIGURE: Screenshot of the Streamlit app with sidebar controls](images/streamlit-app.png){#fig-app}
+[**🔗 Click Here to Try the Interactive Map Generator**](https://basabu1-map-generation-app-fut9qy.streamlit.app/)
 
-[TODO: Refer to @fig-app. Highlight the interactive controls.]
+The app gives you control over the key generation parameters:
 
-[TODO: Mention it's available online / how to run it]
+* **Random Seed**: Change this to generate a completely different world layout.
+* **Noise Scale**: Controls the "zoom" of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.
+* **Water Level**: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.
+* **Island Clusters**: Determines the number of mountain peaks (island centers) to generate.
+* **Resolution**: The number of Voronoi cells. More points = finer detail (but slower generation).
 
----
+![Screenshot of the Streamlit app](figures/streamlit-screenshot.png){#fig-app}
 
-# Effect of Parameters
-
-## Noise Scale
-
-[TODO: What does this parameter control?]
-
-![FIGURE: Three terrains with different noise scales (low, medium, high)](images/noise-scale-effect.png){#fig-noise-scale}
-
-[TODO: Refer to @fig-noise-scale. Describe what changes.]
-
-## Water Level
-
-[TODO: What does this parameter control?]
-
-![FIGURE: Three terrains with different water levels](images/water-level-effect.png){#fig-water-level}
-
-[TODO: Refer to @fig-water-level. Describe what changes.]
-
-## Island Clusters
-
-[TODO: What does this parameter control?]
-
-![FIGURE: Single island vs. archipelago vs. island chain](images/cluster-effect.png){#fig-clusters}
-
-[TODO: Refer to @fig-clusters. Describe what changes.]
+With this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, and we have the controls. Now, it is time to add the third dimension.
 
 ---
 
-# Transfer to 3D
+# Stage 3: Continents
+
+## Transfer to 3D
 
 [TODO: How did you take the 2D map into Blender?]
 

@@ -1,19 +1,14 @@
 """
-Procedural Map Generator - Streamlit Web Application
+Procedural Map Generator - Streamlit Web Application.
 
-Interactive terrain generation using Voronoi diagrams and Perlin noise.
+Interactive web-based terrain generation using Voronoi diagrams and Perlin noise.
+Deployed at: https://basabu1-map-generation-app-fut9qy.streamlit.app/
 
 Usage:
     streamlit run app.py
 
-Requirements:
-    - streamlit
-    - numpy
-    - matplotlib
-    - noise
-    - scipy
-
 Author: Batsambuu Batbold
+Course: MATH 437 - Computational Geometry
 Date: December 2025
 """
 
@@ -23,7 +18,7 @@ import matplotlib.pyplot as plt
 
 from map import Map
 
-# Page configuration
+
 st.set_page_config(
     page_title="Procedural Map Generator",
     page_icon="🗺️",
@@ -46,7 +41,7 @@ st.markdown(
 def generate_map_figure(
     seed: int,
     num_points: int = 2000,
-    noise_scale: float = 3.0,
+    noise_scale: float = 4.0,
     water_level: float = 0.35,
     clusters: int = 5,
 ) -> plt.Figure:
@@ -54,23 +49,15 @@ def generate_map_figure(
     Generate terrain and return a matplotlib figure.
     
     Args:
-        seed: Random seed for reproducibility
-        num_points: Number of Voronoi sites
-        noise_scale: Perlin noise frequency (1-10)
-        water_level: Ocean/land threshold (0-0.8)
-        clusters: Number of island centers
+        seed: Random seed for reproducibility.
+        num_points: Number of Voronoi sites.
+        noise_scale: Perlin noise frequency (1-10).
+        water_level: Ocean/land threshold (0-0.8).
+        clusters: Number of island centers.
         
     Returns:
-        Matplotlib figure containing the rendered terrain
-        
-    Raises:
-        ValueError: If parameters are out of valid ranges
+        Matplotlib figure containing the rendered terrain.
     """
-    if not (0 <= water_level <= 0.8):
-        raise ValueError("Water level must be between 0 and 0.8")
-    if not (1 <= noise_scale <= 10):
-        raise ValueError("Noise scale must be between 1 and 10")
-    
     np.random.seed(seed)
     points = np.random.rand(num_points, 2)
     terrain = Map(
@@ -128,7 +115,7 @@ def main() -> None:
             "🔍 Noise Scale",
             min_value=1.0,
             max_value=10.0,
-            value=3.0,
+            value=4.0,
             step=0.5,
             help="Higher = more detailed, but chaotic terrain features",
         )

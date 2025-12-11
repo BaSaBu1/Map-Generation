@@ -1,19 +1,23 @@
 """
 Terrain Visualization Application.
 
-Interactive procedural terrain generator using Voronoi diagrams and Perlin noise.
-Provides real-time parameter adjustment through Matplotlib widgets.
+Desktop GUI for interactive procedural terrain generation using Matplotlib.
+Provides real-time parameter adjustment through sliders and buttons.
+
+Usage:
+    python main.py
 
 Author: Batsambuu Batbold
+Course: MATH 437 - Computational Geometry
 Date: December 2025
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button, TextBox
+
 from map import Map
 
-# Configuration 
 MAP_SIZE = 1.0
 DEFAULT_SEED = 7290
 NUM_POINTS = 5000
@@ -23,10 +27,15 @@ DEFAULT_CLUSTERS = 5
 
 
 class TerrainVisualizer:
-    """Manages interactive visualization and UI controls for terrain generation."""
+    """
+    Interactive terrain visualization with Matplotlib GUI controls.
+    
+    Provides sliders for noise scale, water level, and cluster count,
+    plus seed input and random map generation button.
+    """
 
     def __init__(self) -> None:
-        """Initialize the terrain visualizer with controls."""
+        """Initialize the visualizer with default settings."""
         self.map = None
         self.current_seed = DEFAULT_SEED
 
@@ -38,13 +47,11 @@ class TerrainVisualizer:
         self.generate_new_map()
 
     def _init_controls(self) -> None:
-        """Initialize sliders and buttons."""
-        # Seed input
+        """Initialize UI sliders and buttons."""
         ax_seed = plt.axes([0.25, 0.19, 0.15, 0.03])
         self.textbox_seed = TextBox(ax_seed, "Seed ", initial=str(DEFAULT_SEED))
         self.textbox_seed.on_submit(self._on_seed_change)
 
-        # Sliders (matching Streamlit app)
         ax_noise = plt.axes([0.25, 0.14, 0.65, 0.03])
         ax_water = plt.axes([0.25, 0.09, 0.65, 0.03])
         ax_clusters = plt.axes([0.25, 0.04, 0.65, 0.03])
