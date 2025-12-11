@@ -8,7 +8,7 @@ class Field():
   see: https://en.wikipedia.org/wiki/Lloyd%27s_algorithm
   '''
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, *args, **kwargs): 
     '''
     Store the points and bounding box of the points to which
     Lloyd relaxation will be applied.
@@ -21,7 +21,7 @@ class Field():
     if not isinstance(arr, np.ndarray) or arr.shape[1] != 2:
       raise Exception('Please provide a numpy array with shape n,2')
     self.points = arr
-    # find the bounding box of the input data
+    # find the bounding box of the input data 
     self.domains = self.get_domains(arr)
     # ensure no two points have the exact same coords
     self.jitter_points()

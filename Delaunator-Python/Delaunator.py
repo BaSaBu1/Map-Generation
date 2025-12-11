@@ -68,7 +68,7 @@ class Delaunator:
         i1 = 0
         i2 = 0
 
-        # pick a seed point close to the center
+        # pick a seed point close to the center 
         for i in range(0,n):
             d = dist(cx, cy, coords[2 * i], coords[2 * i + 1])
 
