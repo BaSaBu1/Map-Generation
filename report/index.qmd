@@ -291,12 +291,16 @@ As seen in the video, moving to 3D reveals details that were invisible in 2D. We
 
 ## Key Insights
 
-Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd's Relaxation was the small but key step. I didn't expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic. Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little with it within the deadline.
+Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd's Relaxation was the small but key step. I didn't expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic. 
+
+Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little with it within the deadline.
 
 
 ## Limitations and Future Work
 
-Even though the results look cool, there are a few things I wish I could fix with more time. Right now, moisture is just a number on a tile. It doesn't change. Rivers flowing and cutting into the land would have given the map more life. Further, my biomes only look at height and moisture. Real nature is more complex, involving wind and temperature changes which also cause more gradual shifts between biomes. As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion to make real rivers and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.
+Even though the results look cool, there are a few things I wish I could fix with more time. Right now, moisture is just a number on a tile. It doesn't change. Rivers flowing and cutting into the land would have given the map more life. Further, my biomes only look at height and moisture. Real nature is more complex, involving wind and temperature changes which also cause more gradual shifts between biomes. 
+
+As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion to make real rivers and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.
 
 
 ## Final Summary
