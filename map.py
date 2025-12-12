@@ -188,7 +188,7 @@ class Map:
         scaled_pts = self.points / self.grid_size * self.noise_scale * 1.5
         
         self.moisture = np.array([
-            (pnoise2(x + offset, y + offset, octaves=4) + 1) / 2
+            (pnoise2(x + offset, y + offset, octaves=6) + 1) / 2
             for x, y in scaled_pts
         ])
         
@@ -268,7 +268,7 @@ class Map:
 
     def get_color(self, alt: float, moisture: float) -> tuple:
         """
-        Map altitude and moisture to RGB color using Whittaker biome classification.
+        Map altitude and moisture to RGB color.
         
         Args:
             alt: Elevation value.

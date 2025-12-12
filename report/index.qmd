@@ -96,7 +96,7 @@ Now, our grid is done, and it's time to create the land.
 
 We have our grid, which acts as the skeleton of our world. Now, we need to assign which tiles are land and which are ocean. To do this, I assign an altitude value to every Voronoi region. If the altitude is higher than a user-defined water level threshold, it becomes a land tile; otherwise, it is an ocean tile.
 
-Again, we want the land to look natural. However, there is a huge problem with randomly assigning altitude. If we were to do that, the world would look like "TV static" because every tile would be independent of its neighbors. A deep ocean tile might sit right next to a high mountain peak, which is physically impossible. Real terrain is continuous and gradual: mountains roll into hills, and coastlines gradually descend into the ocean.
+Again, we want the land to look random but natural. However, there is a huge problem with randomly assigning altitude. If we were to do that, the world would look like "TV static" because every tile would be independent of its neighbors. A deep ocean tile might sit right next to a high mountain peak, which is physically impossible. Real terrain is continuous and gradual: mountains roll into hills, and coastlines gradually descend into the ocean.
 
 We need **smooth randomness**. To solve this, we use **Perlin Noise** [@perlin1985].
 
@@ -121,41 +121,40 @@ After assigning Perlin noise as a base altitude, I made some customizations to s
 #| code-summary: "Show Python Implementation"
 
 def assignAltitudes(self):
-    """Generate terrain using Perlin noise masked by distance to island centers."""
-    # 1. Generate raw Perlin noise
-    scaled_pts = self.points / self.grid_size * self.noise_scale
-    noise_vals = np.array([(pnoise2(x, y, octaves=6) + 1) / 2 
-                        for x, y in scaled_pts])
-    
-    # 2. Randomly place the "centers" of our islands
-    island_centers = np.random.uniform(0.2, 0.8, (self.cluster, 2)) * self.grid_size
-    
-    # 3. Calculate distance from every point to the nearest island center
-    all_dists = np.array([np.linalg.norm(self.points - c, axis=1) for c in island_centers])
-    distances = np.min(all_dists, axis=0)
-    normalized_dists = distances / (self.grid_size / 2)
-    
-    # 4. Apply the Distance Penalty (The "Island Mask")
-    # This subtracts height based on how far we are from the center
-    base_alt = noise_vals - normalized_dists ** 2
-    
-    # 5. Apply the Power Curve
-    land_mask = base_alt > self.water_level
-    self.altitudes = base_alt.copy()
-    
-    if np.any(land_mask):
+        """
+        Generate terrain elevation using Perlin noise with island masking.
+        
+        The algorithm combines multi-octave Perlin noise with distance-based
+        falloff from randomly placed island centers. A power curve is applied
+        to create gentle coastal slopes transitioning to steeper mountain peaks.
+        """
+        scaled_pts = self.points / self.grid_size * self.noise_scale
+        noise_vals = np.array([(pnoise2(x, y, octaves=6) + 1) / 2 
+                            for x, y in scaled_pts])
+        
+        # Randomly place island centers (avoiding edges)
+        island_centers = np.random.uniform(0.2, 0.8, (self.cluster, 2)) * self.grid_size
+        
+        # Distance falloff: points far from island centers become ocean
+        all_dists = np.array([np.linalg.norm(self.points - c, axis=1) for c in island_centers])
+        distances = np.min(all_dists, axis=0)  # Distance to nearest island center
+        normalized_dists = distances / (self.grid_size / 2)
+        
+        # Combine noise with distance mask (quadratic falloff)
+        base_alt = noise_vals - normalized_dists ** 2
+        
+        # Apply power curve to land for realistic elevation profile
+        land_mask = base_alt > self.water_level
+        self.altitudes = base_alt.copy()
         land_vals = base_alt[land_mask]
-        # Normalize land to 0.0 - 1.0 range
         land_normalized = (land_vals - self.water_level) / (1.0 - self.water_level)
         land_normalized = np.clip(land_normalized, 0, 1)
         
-        # Piecewise function for terrain profile:
-        # - Bottom 30%: Flat slopes (Beaches)
-        # - Top 70%: Exponential growth (Sharp Peaks)
+        # Piecewise curve: gentle near coast, steeper inland for mountains
         sharpened = np.where(
-            land_normalized < 0.3, 
-            land_normalized * 0.5, 
-            0.15 + (land_normalized - 0.3) ** 1.7 * 3 
+            land_normalized < 0.35,
+            land_normalized * 0.8,  # Gentle coastal slope
+            0.28 + (land_normalized - 0.35) ** 1.3 * 3  # Steeper mountain peaks
         )
         self.altitudes[land_mask] = self.water_level + sharpened * (1.0 - self.water_level)
 ```
@@ -192,35 +191,31 @@ def get_biome_color(self, e, m):
     Both e and m are normalized to 0.0 - 1.0.
     """
     
-    # ZONE 1: COAST & BEACH (Very low elevation)
-    if e < 0.08:
+    if e < 0.1:
         return self.BIOME_COLORS['BEACH']
-    
-    # ZONE 2: HIGH PEAKS (Guaranteed Snow)
-    if e > 0.75:
+    if e > 0.85:
         return self.BIOME_COLORS['SNOW']
-    
-    # ZONE 3: MOUNTAIN LEVEL (High elevation)
-    if e > 0.50:
-        if m < 0.4: return self.BIOME_COLORS['MOUNTAIN'] # Scorched
-        if m < 0.7: return self.BIOME_COLORS['TUNDRA']   # Bare
-        return self.BIOME_COLORS['SNOW']                 # Snowy
-    
-    # ZONE 4: BOREAL LEVEL (Upper-mid elevation)
+    if e > 0.60:
+        if m < 0.4:
+            return self.BIOME_COLORS['MOUNTAIN'] 
+        if m < 0.7:
+            return self.BIOME_COLORS['TUNDRA']    
+        return self.BIOME_COLORS['SNOW']          
     if e > 0.35:
-        if m < 0.4: return self.BIOME_COLORS['GRASSLAND']
-        return self.BIOME_COLORS['TAIGA']                # Pine Forest
-    
-    # ZONE 5: TEMPERATE LEVEL (Mid elevation)
+        if m < 0.4:
+            return self.BIOME_COLORS['GRASSLAND']  
+        return self.BIOME_COLORS['TAIGA']          
     if e > 0.25:
-        if m < 0.3: return self.BIOME_COLORS['DESERT']
-        if m < 0.6: return self.BIOME_COLORS['GRASSLAND']
-        return self.BIOME_COLORS['FOREST']               # Deciduous
-    
-    # ZONE 6: TROPICAL LEVEL (Low elevation)
-    if m < 0.3: return self.BIOME_COLORS['DESERT']
-    if m < 0.6: return self.BIOME_COLORS['GRASSLAND']
-    return self.BIOME_COLORS['RAINFOREST']
+        if m < 0.3:
+            return self.BIOME_COLORS['DESERT']    
+        if m < 0.6:
+            return self.BIOME_COLORS['GRASSLAND']  
+        return self.BIOME_COLORS['FOREST']       
+    if m < 0.3:
+        return self.BIOME_COLORS['DESERT']        
+    if m < 0.6:
+        return self.BIOME_COLORS['GRASSLAND']      
+    return self.BIOME_COLORS['RAINFOREST']   
 ```
 
 
