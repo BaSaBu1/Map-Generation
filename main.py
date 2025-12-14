@@ -19,8 +19,8 @@ from matplotlib.widgets import Slider, Button, TextBox
 from map import Map
 
 MAP_SIZE = 1.0
-DEFAULT_SEED = 7290
-NUM_POINTS = 5000
+DEFAULT_SEED = 123
+NUM_POINTS = 50000
 DEFAULT_NOISE_SCALE = 4.0
 DEFAULT_WATER_LEVEL = 0.35
 DEFAULT_CLUSTERS = 5

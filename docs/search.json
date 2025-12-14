@@ -1,0 +1,93 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "From Chaos to Continents",
+    "section": "",
+    "text": "Final rendered 3D landscape made in Blender, using 50,000 polygons"
+  },
+  {
+    "objectID": "index.html#voronoi-diagram",
+    "href": "index.html#voronoi-diagram",
+    "title": "From Chaos to Continents",
+    "section": "Voronoi Diagram",
+    "text": "Voronoi Diagram\nGiven a point cloud \\(S\\) on a plane, a Voronoi Diagram partitions the plane into regions. For any given point \\(p\\), its Voronoi region consists of all points in the plane that are closer to \\(p\\) than to any other point. Mathematically:\n\\[\n\\text{Vor}(p) = \\{x \\in \\mathbb{R}^2 \\:| \\: \\|x-p\\| \\leq \\|x-q\\| \\text{ for all } q \\in S \\}\n\\]\nThese regions create convex polygons that tile the plane. In the context of terrain generation, each of these Voronoi regions becomes a distinct territory: a patch of forest, a slice of ocean, or a mountain peak. To actually compute these regions in code, we turn to the dual of the Voronoi diagram: the Delaunay Triangulation."
+  },
+  {
+    "objectID": "index.html#delaunay-triangulation",
+    "href": "index.html#delaunay-triangulation",
+    "title": "From Chaos to Continents",
+    "section": "Delaunay Triangulation",
+    "text": "Delaunay Triangulation\nDelaunay Triangulation is defined as a triangulation of a set of points where no point is inside the circumcircle of any triangle. It is mathematically linked to the Voronoi Diagram via duality. If we connect every pair of points whose Voronoi regions share an edge, we get the Delaunay Triangulation. Conversely, the circumcenters of the Delaunay triangles serve as the vertices of the Voronoi diagram.\nFor the implementation, I used the popular existing library delaunator [2]. It computes the triangulation efficiently, allowing us to derive the Voronoi region boundaries from the triangle centers.\n\n\n\n\n\n\nFigure 1: Delaunay Triangulation and Voronoi Regions for 100 random points.\n\n\n\nAs seen in Figure 1, the polygons look nice and random. However, they might be too random. True randomness is clumpy. We end up with tiny slivers of polygons right next to massive, stretched-out ones. This is too chaotic to be a skeleton for a game world. We want the terrain to be somewhat smoother and more uniform, mimicking the natural look of the real world. To fix the clumping, we use Lloyd’s Relaxation [3], also known as Voronoi iteration."
+  },
+  {
+    "objectID": "index.html#lloyds-relaxation",
+    "href": "index.html#lloyds-relaxation",
+    "title": "From Chaos to Continents",
+    "section": "Lloyd’s Relaxation",
+    "text": "Lloyd’s Relaxation\nLloyd’s Relaxation is a simple algorithm that moves the random points to space them out evenly:\n\nCompute the Voronoi Diagram of the current points.\nCalculate the centroid of each Voronoi region.\nMove the point to that centroid.\nRepeat.\n\nBy repeating this process a few times, the points naturally space themselves out. After each iteration, the Voronoi cells become more uniform, ultimately resembling a turtle shell like pattern. I used the existing package lloyd [4] to handle this calculation.\n\n\n\n\n\n\nFigure 2: Lloyd’s Relaxation after 1 and 3 iterations. Typically, 2–3 iterations are sufficient to stabilize the mesh.\n\n\n\nNow, our grid is done, and it’s time to create the land."
+  },
+  {
+    "objectID": "index.html#perlin-noise",
+    "href": "index.html#perlin-noise",
+    "title": "From Chaos to Continents",
+    "section": "Perlin Noise",
+    "text": "Perlin Noise\nPerlin Noise is an algorithm invented by Ken Perlin to generate natural-looking textures for movies. In 1997, Perlin received an Academy Award (Scientific and Technical Achievement) for the development of this algorithm [6].\nUnlike standard random numbers, Perlin noise is coherent. If you pick a point on a Perlin noise map, the neighbor points around it will have very similar values, creating gradual transitions.\n\n\n\n\n\n\nFigure 3: Side-by-side comparison: White noise (left) looks like static, while Perlin noise (right) looks like clouds or terrain.\n\n\n\nAs seen in Figure 3, the algorithm results in a cloud-like pattern that already looks like a map. For the implementation, I used the Python package pnoise [7].\nAfter assigning Perlin noise as a base altitude, I made some customizations to shape the world exactly how I wanted. Raw Perlin noise doesn’t know by itself where an island should be. To fix this, I implemented a two-step shaping process:\n\nIsland Centers: I first scatter a specific number of “mountain peaks” (island centers) randomly across the grid. To ensure the land clusters around these peaks, I apply a distance penalty: the further a tile is from a mountain center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent.\nThe Power Curve: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.\n\n\n\nShow Python Implementation\ndef assignAltitudes(self):\n    \"\"\"\n    Generate terrain elevation using Perlin noise with island masking.\n        \n    The algorithm combines multi-octave Perlin noise with distance-based\n    falloff from randomly placed island centers. A power curve is applied\n    to create gentle coastal slopes transitioning to steeper mountain peaks.\n    \"\"\"\n    scaled_pts = self.points / self.grid_size * self.noise_scale\n    noise_vals = np.array([(pnoise2(x, y, octaves=6) + 1) / 2 \n                            for x, y in scaled_pts])\n        \n    # Randomly place island centers (avoiding edges)\n    island_centers = np.random.uniform(0.2, 0.8, (self.cluster, 2)) * self.grid_size\n        \n    # Distance falloff: points far from island centers become ocean\n    all_dists = np.array([np.linalg.norm(self.points - c, axis=1) for c in island_centers])\n    distances = np.min(all_dists, axis=0)  # Distance to nearest island center\n    normalized_dists = distances / (self.grid_size / 2)\n        \n    # Combine noise with distance mask (quadratic falloff)\n    base_alt = noise_vals - normalized_dists ** 2\n        \n    # Apply power curve to land for realistic elevation profile\n    land_mask = base_alt &gt; self.water_level\n    self.altitudes = base_alt.copy()\n    land_vals = base_alt[land_mask]\n    land_normalized = (land_vals - self.water_level) / (1.0 - self.water_level)\n    land_normalized = np.clip(land_normalized, 0, 1)\n        \n    # Piecewise curve: gentle near coast, steeper inland for mountains\n    sharpened = np.where(\n        land_normalized &lt; 0.35,\n        land_normalized * 0.8,  # Gentle coastal slope\n        0.28 + (land_normalized - 0.35) ** 1.3 * 3  # Steeper mountain peaks\n    )\n    self.altitudes[land_mask] = self.water_level + sharpened * (1.0 - self.water_level)"
+  },
+  {
+    "objectID": "index.html#biome-assignment",
+    "href": "index.html#biome-assignment",
+    "title": "From Chaos to Continents",
+    "section": "Biome Assignment",
+    "text": "Biome Assignment\nWith the heightmap complete, we have a basic definition of land and sea.\n\n\n\n\n\n\nFigure 4: Land and Ocean tiles are assigned for 5,000 polygons\n\n\n\nFigure 4 is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have biomes.\nOur initial strategy relied solely on altitude. While altitude separates ocean from land, it isn’t enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:\n\nProximity to water: Tiles closer to the ocean received a moisture boost.\nElevation Adjustment: High-altitude areas generally became drier, though I added a special exception to ensure the very highest peaks retained enough “moisture” value to support snow caps.\n\nBy combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a classification similar to Red Blob Games [1], resulting in 10 distinct biome types. For example:\n\nHigh Altitude + Low Moisture \\(\\rightarrow\\) Scorched / Rocky Mountain\nHigh Altitude + High Moisture \\(\\rightarrow\\) Snow\nMid Altitude + High Moisture \\(\\rightarrow\\) Forest\nLow Altitude + Low Moisture \\(\\rightarrow\\) Desert\n\n\n\nShow Classification Logic\ndef get_biome_color(self, e, m):\n    \"\"\"\n    Returns color based on elevation (e) and moisture (m).\n    Both e and m are normalized to 0.0 - 1.0.\n    \"\"\"\n    \n    if e &lt; 0.1:\n        return self.BIOME_COLORS['BEACH']\n    if e &gt; 0.85:\n        return self.BIOME_COLORS['SNOW']\n    if e &gt; 0.60:\n        if m &lt; 0.4:\n            return self.BIOME_COLORS['MOUNTAIN'] \n        if m &lt; 0.7:\n            return self.BIOME_COLORS['TUNDRA']    \n        return self.BIOME_COLORS['SNOW']          \n    if e &gt; 0.35:\n        if m &lt; 0.4:\n            return self.BIOME_COLORS['GRASSLAND']  \n        return self.BIOME_COLORS['TAIGA']          \n    if e &gt; 0.25:\n        if m &lt; 0.3:\n            return self.BIOME_COLORS['DESERT']    \n        if m &lt; 0.6:\n            return self.BIOME_COLORS['GRASSLAND']  \n        return self.BIOME_COLORS['FOREST']       \n    if m &lt; 0.3:\n        return self.BIOME_COLORS['DESERT']        \n    if m &lt; 0.6:\n        return self.BIOME_COLORS['GRASSLAND']      \n    return self.BIOME_COLORS['RAINFOREST']   \n\n\n\n\n\n\n\n\nFigure 5: Terrain with biome colorings\n\n\n\nAs seen in Figure 5, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks in the center."
+  },
+  {
+    "objectID": "index.html#d-interactive-playground",
+    "href": "index.html#d-interactive-playground",
+    "title": "From Chaos to Continents",
+    "section": "2D Interactive Playground",
+    "text": "2D Interactive Playground\nUp to this point, I was happy with the logic of my 2D map. However, tuning the parameters to get the exact look I wanted required endless tweaking. It became incredibly annoying to re-run the entire script every time I wanted to change a noise value by \\(0.1\\). So, I built an interactive dashboard to visualize the changes in real-time. Since the tool was so useful for debugging, I decided to host it publicly on Streamlit so you can try it yourself.\n🔗 Click Here to Try the Interactive Map Generator\nThe app gives you control over the key generation parameters:\n\nRandom Seed: Change this to generate a completely different world layout.\nNoise Scale: Controls the “zoom” of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.\nWater Level: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.\nIsland Clusters: Determines the number of mountain peaks (island centers) to generate.\nResolution: The number of Voronoi cells. More points = finer detail (but slower generation).\n\n\n\n\n\n\n\nFigure 6: Screenshot of the Streamlit app\n\n\n\nWith this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, and we have the controls. Now, it is time to add the third dimension."
+  },
+  {
+    "objectID": "index.html#transfer-to-3d",
+    "href": "index.html#transfer-to-3d",
+    "title": "From Chaos to Continents",
+    "section": "Transfer to 3D",
+    "text": "Transfer to 3D\nTo use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a Heightmap: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also requires a Colormap to paint the surface.\nI wrote a script using the Python Imaging Library (PIL/Pillow) [9] to export these images directly from my generation code.\n\n\nShow Heightmap Export Code\n# Normalize altitudes to 0.0 - 1.0 range\nh_min, h_max = heights.min(), heights.max()\nheights = (heights - h_min) / (h_max - h_min) \n\n# Transform to 0-255 integer range for image pixels\nheights = (heights * 255).astype(np.uint8) \n\n# Flip upside down (Blender's UV coordinates are often flipped relative to arrays)\nheights = np.flipud(heights) \n\n# Save the image as Grayscale (Mode 'L')\nimg = Image.fromarray(heights, mode=\"L\") \nimg.save(\"heightmap.png\")\n\n\n\n\n\n\n\n\nFigure 7: The exported heightmap and colormap of 50,000 polygons\n\n\n\nFigure 7 shows the raw output of this process. The grayscale image controls the geometry, while the colored map paints the surface."
+  },
+  {
+    "objectID": "index.html#d-result",
+    "href": "index.html#d-result",
+    "title": "From Chaos to Continents",
+    "section": "3D Result",
+    "text": "3D Result\nAfter importing these images into Blender and applying a Displacement Modifier to a plane, the flat grid transformed into a rough terrain.\n\n\n\nAs seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, and how biomes change based on altitude. Overall, I’m quite happy with what I accomplished before the semester ends."
+  },
+  {
+    "objectID": "index.html#key-insights",
+    "href": "index.html#key-insights",
+    "title": "From Chaos to Continents",
+    "section": "Key Insights",
+    "text": "Key Insights\nThrough this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd’s Relaxation was the small but key step. I didn’t expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic.\nFinally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little with it within the deadline."
+  },
+  {
+    "objectID": "index.html#limitations-and-future-work",
+    "href": "index.html#limitations-and-future-work",
+    "title": "From Chaos to Continents",
+    "section": "Limitations and Future Work",
+    "text": "Limitations and Future Work\nEven though the results look cool, there are a few things I wish I could fix with more time. Right now, moisture is just a number on a tile. It doesn’t change. Rivers flowing and cutting into the land would have given the map more life. Further, my biomes only look at height and moisture. Real nature is more complex, involving wind and temperature changes which also cause more gradual shifts between biomes.\nAs I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion to make real rivers and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built."
+  },
+  {
+    "objectID": "index.html#final-summary",
+    "href": "index.html#final-summary",
+    "title": "From Chaos to Continents",
+    "section": "Final Summary",
+    "text": "Final Summary\nAt the start, I said that making worlds by hand takes too long and grids look too blocky. By using Voronoi diagrams instead of squares, and Perlin noise to shape the land, we built a system that makes infinite, natural-looking continents.\nThis project explored the intersection of math and art, and the potential of what they have given us and what they will. In the end, I shaped the world in my way."
+  },
+  {
+    "objectID": "index.html#note",
+    "href": "index.html#note",
+    "title": "From Chaos to Continents",
+    "section": "Note",
+    "text": "Note\nAll code and project files are available at the GitHub repository."
+  }
+]

@@ -19,12 +19,12 @@ import numpy as np
 
 from map import Map
 
-SEED = 437
-NUM_POINTS = 200000
+SEED = 123
+NUM_POINTS = 50000
 NOISE_SCALE = 4.0
 WATER_LEVEL = 0.35
 CLUSTERS = 5
-RESOLUTION = 2048
+RESOLUTION = 4096
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
 OUTPUT_HEIGHTMAP = os.path.join(OUTPUT_DIR, "heightmap.png")

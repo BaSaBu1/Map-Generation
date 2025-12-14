@@ -2,7 +2,7 @@
 title: "From Chaos to Continents"
 subtitle: "Procedural Terrain Generation Using Voronoi Diagrams and More"
 author: "Batsambuu Batbold"
-date: "December 16 2025"
+date: "December 16, 2025"
 abstract: |
   Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.
 
@@ -15,14 +15,12 @@ format:
     toc: true
     toc_float: true
     toc_depth: 3
-    self-contained: true
     code-tools: true
     code-fold: true
 ---
 
-![](images/delaunay-voronoi.png){#fig-delaunay}
+![Final rendered 3D landscape made in Blender, using 50,000 polygons](figures/3D-land.png)
 
-[TODO: Include final 3D screenshot]
 
 # Introduction
 
@@ -157,7 +155,7 @@ def assignAltitudes(self):
 
 With the heightmap complete, we have a basic definition of land and sea.
 
-![Land and Ocean tiles are assigned](figures/land.png){#fig-land}
+![Land and Ocean tiles are assigned for 5,000 polygons](figures/land.png){#fig-land}
 
 @fig-land is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. 
 
@@ -214,7 +212,7 @@ def get_biome_color(self, e, m):
 
 ![Terrain with biome colorings](figures/biomes.png){#fig-biomes}
 
-As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches along the coastline, green forests fill midlands, and white snow caps the highest peaks in the center.
+As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks in the center.
 
 ---
 
@@ -273,7 +271,7 @@ img.save("heightmap.png")
 
 
 
-![The exported heightmap and colormap](figures/height-colormap.png){#fig-export}
+![The exported heightmap and colormap of 50,000 polygons](figures/height-colormap.png){#fig-export}
 
 @fig-export shows the raw output of this process. The grayscale image controls the geometry, while the colored map paints the surface.
 
@@ -281,9 +279,11 @@ img.save("heightmap.png")
 
 After importing these images into Blender and applying a Displacement Modifier to a plane, the flat grid transformed into a rough terrain.
 
-{{< video videos/flyover.mp4 >}}
+<video width="100%" controls>
+  <source src="figures/rendered-video.mp4" type="video/mp4">
+</video>
 
-As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the cliffs, the rolling nature of the hills, and how the light interacts with the geometry to create shadows and depth. With this, I'm quite happy with what I accomplished before the semester ends.
+As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, and how biomes change based on altitude. Overall, I'm quite happy with what I accomplished before the semester ends.
 
 ---
 
