@@ -38,9 +38,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--water-level", type=float, default=WATER_LEVEL,
                         help="Water level threshold")
     parser.add_argument("--land-centers", type=int, default=LAND_CENTERS,
-                        help="Number of island anchor centers")
+                        help="Number of terrain land anchor points")
     parser.add_argument("--resolution", type=int, default=RESOLUTION,
                         help="Output texture resolution (square)")
+    parser.add_argument("--river-width-scale", type=float, default=0.90,
+                        help="Scale factor for river thickness in exported maps")
+    parser.add_argument("--river-opacity", type=float, default=0.72,
+                        help="River blend strength in exported colormap (0-1)")
     parser.add_argument("--output-dir", type=str, default=OUTPUT_DIR,
                         help="Directory where output textures are written")
     return parser.parse_args()
@@ -78,10 +82,19 @@ def main() -> None:
     terrain.export_heightmap(output_files["heightmap"], resolution=args.resolution)
 
     print("  [2/3] Colormap (biome texture + rivers)...")
-    terrain.export_colormap(output_files["colormap"], resolution=args.resolution)
+    terrain.export_colormap(
+        output_files["colormap"],
+        resolution=args.resolution,
+        river_opacity=args.river_opacity,
+        river_width_scale=args.river_width_scale,
+    )
 
     print("  [3/3] River mask (grayscale, for shader mixing)...")
-    terrain.export_rivermap(output_files["rivermap"], resolution=args.resolution)
+    terrain.export_rivermap(
+        output_files["rivermap"],
+        resolution=args.resolution,
+        river_width_scale=args.river_width_scale,
+    )
 
     elapsed = time.time() - start_time
     print(f"\nDone in {elapsed:.1f}s  →  {output_dir}")

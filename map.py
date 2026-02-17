@@ -491,12 +491,21 @@ class Map:
         """Draw rivers with width and opacity scaled by flow accumulation."""
         if not self.rivers:
             return
+
+        # Keep rivers proportional to Voronoi cell size across point counts.
+        # As numRegions increases, cells get smaller, so river strokes should thin out.
+        density_scale = np.clip(
+            np.sqrt(2000.0 / max(float(self.numRegions), 1.0)),
+            0.22,
+            1.0,
+        )
+
         for start, end, flow in self.rivers:
             t = (flow / self.max_flow) ** 0.45
-            width = 0.3 + 2.5 * t
+            width = max(0.08, (0.22 + 1.80 * t) * density_scale)
             blue = 0.85 - 0.25 * t
             color = (0.05, 0.15 + 0.15 * t, blue)
-            alpha = min(1.0, 0.5 + 0.5 * t)
+            alpha = min(0.90, 0.35 + 0.45 * t)
             ax.plot([start[0], end[0]], [start[1], end[1]],
                     color=color, linewidth=width, alpha=alpha,
                     solid_capstyle='round', zorder=2)
@@ -714,7 +723,12 @@ class Map:
         graded = np.power(graded, self.COLOR_GRADE["gamma"])
         return np.clip(graded, 0, 1)
 
-    def _rasterize_rivers(self, resolution: int, supersample: int = 2) -> np.ndarray:
+    def _rasterize_rivers(
+        self,
+        resolution: int,
+        supersample: int = 2,
+        width_scale: float = 1.0,
+    ) -> np.ndarray:
         """Rasterize river segments into a float mask at the given resolution.
 
         Draws at *supersample*x resolution then downscales with Lanczos
@@ -727,6 +741,12 @@ class Map:
         if not self.rivers:
             return np.zeros((resolution, resolution), dtype=float)
 
+        # Scale width to average Voronoi cell size in export pixels.
+        # This prevents "marker-thick" rivers on dense maps (20k/50k points).
+        cell_px = resolution / np.sqrt(max(float(self.numRegions), 1.0))
+        min_width_px = max(1, int(round(0.10 * cell_px * width_scale)))
+        max_width_px = max(min_width_px + 1, int(round(0.32 * cell_px * width_scale)))
+
         for start, end, flow in self.rivers:
             x1 = int(start[0] / self.grid_size * (canvas_size - 1))
             y1 = int((1.0 - start[1] / self.grid_size) * (canvas_size - 1))
@@ -734,7 +754,8 @@ class Map:
             y2 = int((1.0 - end[1] / self.grid_size) * (canvas_size - 1))
 
             t = (flow / self.max_flow) ** 0.45
-            width = max(1, int((2 + 10 * t) * canvas_size / 1024))
+            width_px = int(round(min_width_px + (max_width_px - min_width_px) * (t ** 0.75)))
+            width = max(1, int(round(width_px * supersample)))
 
             draw.line([(x1, y1), (x2, y2)], fill=255, width=width)
 
@@ -745,7 +766,7 @@ class Map:
             )
 
         river_mask = np.array(mask_img).astype(float) / 255.0
-        river_mask = gaussian_filter(river_mask, sigma=0.6)  # light AA blur
+        river_mask = gaussian_filter(river_mask, sigma=0.45)  # light AA blur
         return np.clip(river_mask, 0, 1)
 
     def export_heightmap(self, filepath: str, resolution: int = 1024) -> None:
@@ -762,19 +783,30 @@ class Map:
         img = Image.fromarray(heights_16, mode="I;16")
         img.save(filepath)
 
-    def export_colormap(self, filepath: str, resolution: int = 1024) -> None:
+    def export_colormap(
+        self,
+        filepath: str,
+        resolution: int = 1024,
+        river_opacity: float = 0.75,
+        river_width_scale: float = 1.0,
+    ) -> None:
         """Write an RGB biome texture with rivers painted on top."""
         heights = self._interpolate_grid(self.altitudes, resolution, fill_value=0)
         moistures = self._interpolate_grid(self.moisture, resolution, fill_value=0.5)
         colors = self._get_colors_grid(heights, moistures)
 
         # Blend river color on top
-        river_mask = self._rasterize_rivers(resolution, supersample=2)
+        river_mask = self._rasterize_rivers(
+            resolution,
+            supersample=2,
+            width_scale=river_width_scale,
+        )
+        river_blend = np.clip(river_mask * river_opacity, 0, 1)
         river_color = np.array(self.BIOME_COLORS['RIVER'])
         for c in range(3):
             colors[:, :, c] = (
-                colors[:, :, c] * (1 - river_mask) +
-                river_color[c] * river_mask
+                colors[:, :, c] * (1 - river_blend) +
+                river_color[c] * river_blend
             )
 
         colors = self._apply_color_grade(colors)
@@ -783,9 +815,18 @@ class Map:
         img = Image.fromarray(colors_uint8, mode="RGB")
         img.save(filepath)
 
-    def export_rivermap(self, filepath: str, resolution: int = 1024) -> None:
+    def export_rivermap(
+        self,
+        filepath: str,
+        resolution: int = 1024,
+        river_width_scale: float = 1.0,
+    ) -> None:
         """Write a grayscale river mask (white = river, black = land)."""
-        river_mask = self._rasterize_rivers(resolution, supersample=2)
+        river_mask = self._rasterize_rivers(
+            resolution,
+            supersample=2,
+            width_scale=river_width_scale,
+        )
         mask_uint8 = (river_mask * 255).astype(np.uint8)
         img = Image.fromarray(mask_uint8, mode="L")
         img.save(filepath)
