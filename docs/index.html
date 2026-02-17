@@ -179,6 +179,7 @@ window.Quarto = {
   <ul class="collapse">
   <li><a href="#perlin-noise" id="toc-perlin-noise" class="nav-link" data-scroll-target="#perlin-noise">Perlin Noise</a></li>
   <li><a href="#biome-assignment" id="toc-biome-assignment" class="nav-link" data-scroll-target="#biome-assignment">Biome Assignment</a></li>
+  <li><a href="#river-network" id="toc-river-network" class="nav-link" data-scroll-target="#river-network">River Network</a></li>
   <li><a href="#d-interactive-playground" id="toc-d-interactive-playground" class="nav-link" data-scroll-target="#d-interactive-playground">2D Interactive Playground</a></li>
   </ul></li>
   <li><a href="#stage-3-continents" id="toc-stage-3-continents" class="nav-link" data-scroll-target="#stage-3-continents">Stage 3: Continents</a>
@@ -230,7 +231,7 @@ window.Quarto = {
 <div>
   <div class="abstract">
     <div class="block-title">Abstract</div>
-    <p>Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.</p>
+    <p>Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Rivers are generated using priority-flood drainage routing along the Voronoi edges. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.</p>
   </div>
 </div>
 
@@ -332,49 +333,68 @@ Figure&nbsp;3: Side-by-side comparison: White noise (left) looks like static, wh
 <p>As seen in <a href="#fig-noise" class="quarto-xref">Figure&nbsp;3</a>, the algorithm results in a cloud-like pattern that already looks like a map. For the implementation, I used the Python package <strong>pnoise</strong> <span class="citation" data-cites="pnoise"><a href="#ref-pnoise" role="doc-biblioref">[7]</a></span>.</p>
 <p>After assigning Perlin noise as a base altitude, I made some customizations to shape the world exactly how I wanted. Raw Perlin noise doesn’t know by itself where an island should be. To fix this, I implemented a two-step shaping process:</p>
 <ul>
-<li><p><strong>Island Centers</strong>: I first scatter a specific number of “mountain peaks” (island centers) randomly across the grid. To ensure the land clusters around these peaks, I apply a distance penalty: the further a tile is from a mountain center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent.</p></li>
-<li><p><strong>The Power Curve</strong>: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</p></li>
+<li><strong>Land Centers</strong>: I scatter a number of anchor points (land centers) across the grid. To ensure the land clusters around these anchors, I apply a distance penalty: the further a tile is from a land center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent. By default, these anchors are placed randomly, but I also added an option to choose from preset layouts. For example, placing anchors at the four corners gives us four distinct islands, or placing one in the center gives a single continent.</li>
 </ul>
-<div id="bddb67f1" class="cell" data-execution_count="1">
+<div id="fig-anchors" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-anchors-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figures/custom-land-only.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-anchors-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Preset layout with anchors at the four corners creates four distinct islands
+</figcaption>
+</figure>
+</div>
+<!-- TODO: update custom-land-only.png if you change the seed or layout -->
+<ul>
+<li><strong>The Power Curve</strong>: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</li>
+</ul>
+<div id="a87a9513" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Show Python Implementation</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> assignAltitudes(<span class="va">self</span>):</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Generate terrain elevation using Perlin noise with island masking.</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">        </span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">    The algorithm combines multi-octave Perlin noise with distance-based</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co">    falloff from randomly placed island centers. A power curve is applied</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">    to create gentle coastal slopes transitioning to steeper mountain peaks.</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    scaled_pts <span class="op">=</span> <span class="va">self</span>.points <span class="op">/</span> <span class="va">self</span>.grid_size <span class="op">*</span> <span class="va">self</span>.noise_scale</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    noise_vals <span class="op">=</span> np.array([(pnoise2(x, y, octaves<span class="op">=</span><span class="dv">6</span>) <span class="op">+</span> <span class="dv">1</span>) <span class="op">/</span> <span class="dv">2</span> </span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>                            <span class="cf">for</span> x, y <span class="kw">in</span> scaled_pts])</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Randomly place island centers (avoiding edges)</span></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    island_centers <span class="op">=</span> np.random.uniform(<span class="fl">0.2</span>, <span class="fl">0.8</span>, (<span class="va">self</span>.cluster, <span class="dv">2</span>)) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Distance falloff: points far from island centers become ocean</span></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    all_dists <span class="op">=</span> np.array([np.linalg.norm(<span class="va">self</span>.points <span class="op">-</span> c, axis<span class="op">=</span><span class="dv">1</span>) <span class="cf">for</span> c <span class="kw">in</span> island_centers])</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    distances <span class="op">=</span> np.<span class="bu">min</span>(all_dists, axis<span class="op">=</span><span class="dv">0</span>)  <span class="co"># Distance to nearest island center</span></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    normalized_dists <span class="op">=</span> distances <span class="op">/</span> (<span class="va">self</span>.grid_size <span class="op">/</span> <span class="dv">2</span>)</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Combine noise with distance mask (quadratic falloff)</span></span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    base_alt <span class="op">=</span> noise_vals <span class="op">-</span> normalized_dists <span class="op">**</span> <span class="dv">2</span></span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Apply power curve to land for realistic elevation profile</span></span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    land_mask <span class="op">=</span> base_alt <span class="op">&gt;</span> <span class="va">self</span>.water_level</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes <span class="op">=</span> base_alt.copy()</span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    land_vals <span class="op">=</span> base_alt[land_mask]</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    land_normalized <span class="op">=</span> (land_vals <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    land_normalized <span class="op">=</span> np.clip(land_normalized, <span class="dv">0</span>, <span class="dv">1</span>)</span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Piecewise curve: gentle near coast, steeper inland for mountains</span></span>
-<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    sharpened <span class="op">=</span> np.where(</span>
-<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        land_normalized <span class="op">&lt;</span> <span class="fl">0.35</span>,</span>
-<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>        land_normalized <span class="op">*</span> <span class="fl">0.8</span>,  <span class="co"># Gentle coastal slope</span></span>
-<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>        <span class="fl">0.28</span> <span class="op">+</span> (land_normalized <span class="op">-</span> <span class="fl">0.35</span>) <span class="op">**</span> <span class="fl">1.3</span> <span class="op">*</span> <span class="dv">3</span>  <span class="co"># Steeper mountain peaks</span></span>
-<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes[land_mask] <span class="op">=</span> <span class="va">self</span>.water_level <span class="op">+</span> sharpened <span class="op">*</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Set per-region elevation using Perlin noise + land-anchor falloff.</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">    Supports both random and user-defined anchor placement.</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Scale point coordinates to control feature size in noise space</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    scaled_pts <span class="op">=</span> <span class="va">self</span>.points <span class="op">/</span> <span class="va">self</span>.grid_size <span class="op">*</span> <span class="va">self</span>.noise_scale</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Generate Perlin noise with 6 octaves (layers of detail),</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then shift from [-1, 1] to [0, 1] range</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    noise_vals <span class="op">=</span> np.array([(pnoise2(x, y, octaves<span class="op">=</span><span class="dv">6</span>) <span class="op">+</span> <span class="dv">1</span>) <span class="op">/</span> <span class="dv">2</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>                           <span class="cf">for</span> x, y <span class="kw">in</span> scaled_pts])</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use user-provided anchors, or scatter random ones within</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># the inner 20%-80% of the grid to keep land away from edges</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.custom_anchors <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        anchors <span class="op">=</span> np.array(<span class="va">self</span>.custom_anchors) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        anchors <span class="op">=</span> np.random.uniform(<span class="fl">0.2</span>, <span class="fl">0.8</span>, (<span class="va">self</span>.land_centers, <span class="dv">2</span>)) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="co"># For each tile, find the distance to the nearest anchor</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># and normalize it relative to half the grid size</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    all_dists <span class="op">=</span> np.array([np.linalg.norm(<span class="va">self</span>.points <span class="op">-</span> c, axis<span class="op">=</span><span class="dv">1</span>) <span class="cf">for</span> c <span class="kw">in</span> anchors])</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    normalized_dists <span class="op">=</span> np.<span class="bu">min</span>(all_dists, axis<span class="op">=</span><span class="dv">0</span>) <span class="op">/</span> (<span class="va">self</span>.grid_size <span class="op">/</span> <span class="dv">2</span>)</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Subtract squared distance - quadratic falloff pushes</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># tiles far from anchors below the water level</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    base_alt <span class="op">=</span> noise_vals <span class="op">-</span> normalized_dists <span class="op">**</span> <span class="dv">2</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># --- Piecewise power curve: gentle near coast, steep inland ---</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    land_mask <span class="op">=</span> base_alt <span class="op">&gt;</span> <span class="va">self</span>.water_level</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes <span class="op">=</span> base_alt.copy()</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    land_vals <span class="op">=</span> base_alt[land_mask]</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Normalize land heights to [0, 1] above water level</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    land_norm <span class="op">=</span> np.clip((land_vals <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level), <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Below 35% = coastal zone: flatten to 80% of original height</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    coastal <span class="op">=</span> land_norm <span class="op">&lt;</span> <span class="fl">0.35</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    sharpened <span class="op">=</span> np.empty_like(land_norm)</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    sharpened[coastal] <span class="op">=</span> land_norm[coastal] <span class="op">*</span> <span class="fl">0.8</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Above 35% = inland: start at 0.28 (matches coastal edge: 0.35*0.8),</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then rise steeply with exponent 1.3, amplified by 3x</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>    sharpened[<span class="op">~</span>coastal] <span class="op">=</span> <span class="fl">0.28</span> <span class="op">+</span> np.power(land_norm[<span class="op">~</span>coastal] <span class="op">-</span> <span class="fl">0.35</span>, <span class="fl">1.3</span>) <span class="op">*</span> <span class="dv">3</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Map shaped values back to the full altitude range</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes[land_mask] <span class="op">=</span> <span class="va">self</span>.water_level <span class="op">+</span> sharpened <span class="op">*</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
@@ -384,73 +404,107 @@ Figure&nbsp;3: Side-by-side comparison: White noise (left) looks like static, wh
 <div id="fig-land" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-land-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="figures/land.png" class="img-fluid figure-img">
+<img src="figures/land.png" class="img-fluid figure-img" style="width:75.0%">
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-land-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;4: Land and Ocean tiles are assigned for 5,000 polygons
+Figure&nbsp;5: Land and Ocean tiles are assigned for 5,000 polygons
 </figcaption>
 </figure>
 </div>
-<p><a href="#fig-land" class="quarto-xref">Figure&nbsp;4</a> is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have <strong>biomes</strong>.</p>
+<p><a href="#fig-land" class="quarto-xref">Figure&nbsp;5</a> is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have <strong>biomes</strong>.</p>
 <p>Our initial strategy relied solely on altitude. While altitude separates ocean from land, it isn’t enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:</p>
 <ul>
 <li><strong>Proximity to water</strong>: Tiles closer to the ocean received a moisture boost.</li>
 <li><strong>Elevation Adjustment</strong>: High-altitude areas generally became drier, though I added a special exception to ensure the very highest peaks retained enough “moisture” value to support snow caps.</li>
 </ul>
-<p>By combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a classification similar to Red Blob Games <span class="citation" data-cites="patel2015polygonal"><a href="#ref-patel2015polygonal" role="doc-biblioref">[1]</a></span>, resulting in 10 distinct biome types. For example:</p>
+<p>By combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a Whittaker-style biome classification <span class="citation" data-cites="whittaker_diagram"><a href="#ref-whittaker_diagram" role="doc-biblioref">[8]</a></span>, similar to Red Blob Games <span class="citation" data-cites="patel2015polygonal"><a href="#ref-patel2015polygonal" role="doc-biblioref">[1]</a></span>, resulting in 10 distinct biome types. For example:</p>
 <ul>
 <li>High Altitude + Low Moisture <span class="math inline">\(\rightarrow\)</span> Scorched / Rocky Mountain</li>
 <li>High Altitude + High Moisture <span class="math inline">\(\rightarrow\)</span> Snow</li>
 <li>Mid Altitude + High Moisture <span class="math inline">\(\rightarrow\)</span> Forest</li>
 <li>Low Altitude + Low Moisture <span class="math inline">\(\rightarrow\)</span> Desert</li>
 </ul>
-<div id="05d1b7ba" class="cell" data-execution_count="2">
+<p>However, using this rigid classification directly looks terrible. The boundaries between biomes are sharp and artificial - a tile is either 100% forest or 100% desert with no in-between. Real nature doesn’t work like that. To fix this, I used a three-step pipeline:</p>
+<ol type="1">
+<li><p><strong>Lookup Table (LUT)</strong>: I evaluate the Whittaker classification on a <span class="math inline">\(256 \times 256\)</span> grid (elevation × moisture), producing a hard-edged biome color map.</p></li>
+<li><p><strong>Gaussian Blur</strong> <span class="citation" data-cites="gaussian_blur"><a href="#ref-gaussian_blur" role="doc-biblioref">[9]</a></span>: Using SciPy’s <code>gaussian_filter</code>, I blur the table with a Gaussian kernel (<span class="math inline">\(\sigma = 8\)</span>). This dissolves the sharp boundaries into smooth gradients - a forest fades into grassland instead of cutting off abruptly.</p></li>
+<li><p><strong>Bilinear Interpolation</strong>: When looking up a tile’s color, I interpolate between the four surrounding cells in the blurred table instead of snapping to the nearest one, removing any remaining banding.</p></li>
+</ol>
+<div id="710905fd" class="cell" data-execution_count="2">
 <details class="code-fold">
-<summary>Show Classification Logic</summary>
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_biome_color(<span class="va">self</span>, e, m):</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Returns color based on elevation (e) and moisture (m).</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">    Both e and m are normalized to 0.0 - 1.0.</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&lt;</span> <span class="fl">0.1</span>:</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'BEACH'</span>]</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.85</span>:</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'SNOW'</span>]</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.60</span>:</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.4</span>:</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'MOUNTAIN'</span>] </span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.7</span>:</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'TUNDRA'</span>]    </span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'SNOW'</span>]          </span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.35</span>:</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.4</span>:</span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]  </span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'TAIGA'</span>]          </span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.25</span>:</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.3</span>:</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'DESERT'</span>]    </span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.6</span>:</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]  </span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'FOREST'</span>]       </span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.3</span>:</span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'DESERT'</span>]        </span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.6</span>:</span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]      </span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'RAINFOREST'</span>]   </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<summary>Show Biome Coloring Pipeline</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_biome_table(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Pre-compute a Gaussian-blurred biome color LUT indexed by (elevation, moisture)."""</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> <span class="va">self</span>.BIOME_TABLE_RES  <span class="co"># 256x256 grid resolution</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    table <span class="op">=</span> np.zeros((res, res, <span class="dv">3</span>))  <span class="co"># RGB color for each (elev, moisture) pair</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fill every cell with the hard Whittaker biome color</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(res):</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(res):</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Normalize indices to [0, 1] for elevation and moisture</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>            table[i, j] <span class="op">=</span> <span class="va">self</span>._get_raw_biome_color(i <span class="op">/</span> (res <span class="op">-</span> <span class="dv">1</span>), j <span class="op">/</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Blur each color channel separately; sigma=8 controls</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># how wide the transition zones are between biomes.</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># mode='nearest' repeats edge colors instead of fading to black</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">3</span>):</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        table[:, :, c] <span class="op">=</span> gaussian_filter(table[:, :, c], sigma<span class="op">=</span><span class="fl">8.0</span>, mode<span class="op">=</span><span class="st">'nearest'</span>)</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._biome_table <span class="op">=</span> table</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_color(<span class="va">self</span>, alt, moisture):</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Return a smoothly blended biome color using the blurred lookup table."""</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> alt <span class="op">&lt;</span> <span class="va">self</span>.water_level:</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Ocean tiles: blend between shallow and deep blue based on depth</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>        depth <span class="op">=</span> np.clip((<span class="va">self</span>.water_level <span class="op">-</span> alt) <span class="op">/</span> <span class="va">self</span>.water_level, <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>        t <span class="op">=</span> depth <span class="op">**</span> <span class="fl">0.7</span>  <span class="co"># power &lt; 1 brightens shallow areas for coastal contrast</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="bu">tuple</span>(shallow <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> t) <span class="op">+</span> deep <span class="op">*</span> t)</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Land tiles: map altitude and moisture to table coordinates</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>    e <span class="op">=</span> np.clip((alt <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> <span class="fl">0.25</span>, <span class="dv">0</span>, <span class="dv">1</span>)  <span class="co"># normalize land elevation</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>    m <span class="op">=</span> np.clip(moisture, <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Convert to table indices and interpolate between 4 neighbors</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>    ei <span class="op">=</span> <span class="bu">int</span>(e <span class="op">*</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>    mi <span class="op">=</span> <span class="bu">int</span>(m <span class="op">*</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ... bilinear interpolation between 4 neighboring table entries ...</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">tuple</span>(color)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 <div id="fig-biomes" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-biomes-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="figures/biomes.png" class="img-fluid figure-img">
+<img src="figures/biomes.png" class="img-fluid figure-img" style="width:75.0%">
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-biomes-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;5: Terrain with biome colorings
+Figure&nbsp;6: Terrain with biome colorings and smooth Gaussian transitions
 </figcaption>
 </figure>
 </div>
-<p>As seen in <a href="#fig-biomes" class="quarto-xref">Figure&nbsp;5</a>, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks in the center.</p>
+<p>As seen in <a href="#fig-biomes" class="quarto-xref">Figure&nbsp;6</a>, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks. Thanks to the Gaussian blur on the biome table, the transitions between biomes are smooth and gradual rather than abrupt.</p>
+</section>
+<section id="river-network" class="level2">
+<h2 class="anchored" data-anchor-id="river-network">River Network</h2>
+<p>With biomes in place, the map was looking good, but something was still missing - rivers. Real landscapes have water flowing from mountains down to the ocean, and adding that would bring the map to life.</p>
+<p>I implemented a river system using the Voronoi mesh structure. The idea is to use the connections between Voronoi vertices (the circumcenters of the Delaunay triangles) as potential river channels. Here is how it works:</p>
+<ol type="1">
+<li><p><strong>Priority-Flood Flow Routing</strong> <span class="citation" data-cites="BARNES2014117"><a href="#ref-BARNES2014117" role="doc-biblioref">[10]</a></span>: Starting from all ocean vertices, the algorithm floods outward using a min-heap (priority queue), always processing the lowest-elevation vertex first. Each visited vertex records where it was reached from, creating a flow-to pointer. This builds a spanning tree where every land vertex has a single downhill path to the sea.</p></li>
+<li><p><strong>Flow Accumulation</strong>: Starting from the highest vertices, each one passes its accumulated count downstream. Vertices near mountaintops have low counts, while those near the coast collect from hundreds of upstream sources. This count directly controls river width and opacity - thicker lines for major rivers, thin faint lines for small streams.</p></li>
+<li><p><strong>Two-Pass Source Selection</strong>: The first pass picks high-accumulation vertices with long paths to water as the main river sources. The second pass fills in shorter tributaries to improve coverage, and an occupancy grid keeps rivers from clustering too close together.</p></li>
+</ol>
+<p>The rivers are drawn with width and opacity scaled by their flow accumulation - wider, more visible lines for major rivers and thin, faint lines for small streams.</p>
+<div id="fig-rivers" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-rivers-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="figures/rivers.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-rivers-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;7: Terrain with rivers flowing from mountains to the ocean
+</figcaption>
+</figure>
+</div>
+<p>As seen in <a href="#fig-rivers" class="quarto-xref">Figure&nbsp;7</a>, the rivers add a lot of life to the map. They naturally follow the terrain, flowing downhill from the peaks and reaching the ocean.</p>
 <hr>
 </section>
 <section id="d-interactive-playground" class="level2">
@@ -462,60 +516,62 @@ Figure&nbsp;5: Terrain with biome colorings
 <li><strong>Random Seed</strong>: Change this to generate a completely different world layout.</li>
 <li><strong>Noise Scale</strong>: Controls the “zoom” of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.</li>
 <li><strong>Water Level</strong>: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.</li>
-<li><strong>Island Clusters</strong>: Determines the number of mountain peaks (island centers) to generate.</li>
+<li><strong>Land Centers</strong>: The number of anchor points that shape the landmasses.</li>
+<li><strong>Land Layout</strong>: Switch between random anchor placement and preset layouts (like 4 Corners, Center Island, or Two Continents) to control where land forms.</li>
 <li><strong>Resolution</strong>: The number of Voronoi cells. More points = finer detail (but slower generation).</li>
 </ul>
+<p>For example, here is what the interactive app looks like:</p>
 <div id="fig-app" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-app-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <img src="figures/streamlit-screenshot.png" class="img-fluid figure-img">
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-app-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;6: Screenshot of the Streamlit app
+Figure&nbsp;8: Screenshot of the Streamlit app
 </figcaption>
 </figure>
 </div>
-<p>With this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, and we have the controls. Now, it is time to add the third dimension.</p>
+<p>With this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, we have the rivers, and we have the controls. Now, it is time to add the third dimension.</p>
 <hr>
 </section>
 </section>
 <section id="stage-3-continents" class="level1">
 <h1>Stage 3: Continents</h1>
 <p>In the 2D map, I assigned colors based on the altitude of each Voronoi region. However, a flat map can only tell us so much. To fully utilize the altitude data and satisfy my curiosity about what this world would look like as a real landscape, I decided to move into the third dimension.</p>
-<p>I chose <strong>Blender</strong>, a free and open-source 3D creation software, to render the map. Blender is a widely used tool for visual effects and modeling. Notably, the animated film <em>Flow</em>, which won an Academy Award in 2025, was created using Blender <span class="citation" data-cites="oscar_2025"><a href="#ref-oscar_2025" role="doc-biblioref">[8]</a></span>.</p>
+<p>I chose <strong>Blender</strong>, a free and open-source 3D creation software, to render the map. Blender is a widely used tool for visual effects and modeling. Notably, the animated film <em>Flow</em>, which won an Academy Award in 2025, was created using Blender <span class="citation" data-cites="oscar_2025"><a href="#ref-oscar_2025" role="doc-biblioref">[11]</a></span>.</p>
 <section id="transfer-to-3d" class="level2">
 <h2 class="anchored" data-anchor-id="transfer-to-3d">Transfer to 3D</h2>
-<p>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a <strong>Heightmap</strong>: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also requires a <strong>Colormap</strong> to paint the surface.</p>
-<p>I wrote a script using the <strong>Python Imaging Library (PIL/Pillow)</strong> <span class="citation" data-cites="pillow"><a href="#ref-pillow" role="doc-biblioref">[9]</a></span> to export these images directly from my generation code.</p>
-<div id="eff993db" class="cell" data-execution_count="3">
+<p>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a <strong>Heightmap</strong>: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also needs a <strong>Colormap</strong> to paint the surface. On top of that, I also export a <strong>River Mask</strong> so the Blender shader can make rivers look wet and reflective, distinct from the surrounding terrain.</p>
+<p>I wrote a script using the <strong>Python Imaging Library (PIL/Pillow)</strong> <span class="citation" data-cites="pillow"><a href="#ref-pillow" role="doc-biblioref">[12]</a></span> to export these textures directly from my generation code. The heightmap is saved as a 16-bit grayscale image for maximum precision. Rivers are painted onto the colormap and exported as a separate mask. This keeps the 3D terrain smooth while still showing rivers visually.</p>
+<div id="747c6c70" class="cell" data-execution_count="3">
 <details class="code-fold">
 <summary>Show Heightmap Export Code</summary>
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Normalize altitudes to 0.0 - 1.0 range</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>h_min, h_max <span class="op">=</span> heights.<span class="bu">min</span>(), heights.<span class="bu">max</span>()</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> (heights <span class="op">-</span> h_min) <span class="op">/</span> (h_max <span class="op">-</span> h_min) </span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Transform to 0-255 integer range for image pixels</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> (heights <span class="op">*</span> <span class="dv">255</span>).astype(np.uint8) </span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Flip upside down (Blender's UV coordinates are often flipped relative to arrays)</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> np.flipud(heights) </span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Save the image as Grayscale (Mode 'L')</span></span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> Image.fromarray(heights, mode<span class="op">=</span><span class="st">"L"</span>) </span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>img.save(<span class="st">"heightmap.png"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interpolate per-region altitudes onto a regular pixel grid</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> <span class="va">self</span>._interpolate_grid(<span class="va">self</span>.altitudes, resolution, fill_value<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Normalize to 0.0 - 1.0</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>h_min, h_max <span class="op">=</span> heights.<span class="bu">min</span>(), heights.<span class="bu">max</span>()</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> h_max <span class="op">-</span> h_min <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    heights <span class="op">=</span> (heights <span class="op">-</span> h_min) <span class="op">/</span> (h_max <span class="op">-</span> h_min)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Save as 16-bit grayscale for maximum elevation precision</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>heights_16 <span class="op">=</span> (heights <span class="op">*</span> <span class="dv">65535</span>).astype(np.uint16)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> Image.fromarray(heights_16, mode<span class="op">=</span><span class="st">"I;16"</span>)</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>img.save(<span class="st">"heightmap.png"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
+<!-- TODO: update height-colormap.png -->
 <div id="fig-export" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-export-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <img src="figures/height-colormap.png" class="img-fluid figure-img">
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-export-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
+Figure&nbsp;9: The exported heightmap and colormap of 50,000 polygons
 </figcaption>
 </figure>
 </div>
-<p><a href="#fig-export" class="quarto-xref">Figure&nbsp;7</a> shows the raw output of this process. The grayscale image controls the geometry, while the colored map paints the surface.</p>
+<p><a href="#fig-export" class="quarto-xref">Figure&nbsp;9</a> shows the raw output of this process. The grayscale heightmap controls the geometry, while the colored map paints the surface. The river mask is also exported alongside these so the Blender shader can apply different material properties (lower roughness, higher reflectivity) to rivers.</p>
 </section>
 <section id="d-result" class="level2">
 <h2 class="anchored" data-anchor-id="d-result">3D Result</h2>
@@ -523,7 +579,7 @@ Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
 <video width="100%" controls="">
 <source src="figures/rendered-video.mp4" type="video/mp4">
 </video>
-<p>As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, and how biomes change based on altitude. Overall, I’m quite happy with what I accomplished before the semester ends.</p>
+<p>As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, rivers cutting through valleys, and how biomes change based on altitude. Overall, I’m quite happy with how far this project has come.</p>
 <hr>
 </section>
 </section>
@@ -531,17 +587,17 @@ Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
 <h1>Discussion and Conclusion</h1>
 <section id="key-insights" class="level2">
 <h2 class="anchored" data-anchor-id="key-insights">Key Insights</h2>
-<p>Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd’s Relaxation was the small but key step. I didn’t expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic.</p>
-<p>Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little with it within the deadline.</p>
+<p>Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd’s Relaxation was the small but key step. I didn’t expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic. Adding rivers was another big jump - the map went from looking like a colored diagram to feeling like an actual landscape.</p>
+<p>Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little without spending too much time on it.</p>
 </section>
 <section id="limitations-and-future-work" class="level2">
 <h2 class="anchored" data-anchor-id="limitations-and-future-work">Limitations and Future Work</h2>
-<p>Even though the results look cool, there are a few things I wish I could fix with more time. Right now, moisture is just a number on a tile. It doesn’t change. Rivers flowing and cutting into the land would have given the map more life. Further, my biomes only look at height and moisture. Real nature is more complex, involving wind and temperature changes which also cause more gradual shifts between biomes.</p>
-<p>As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion to make real rivers and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.</p>
+<p>Even though the results look cool, there are a few things I wish I could improve with more time. My biomes look at height and moisture with smooth Gaussian transitions between them, which works well visually, but real nature is more complex - wind, temperature, and seasonal changes all play a role.</p>
+<p>As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion simulation and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.</p>
 </section>
 <section id="final-summary" class="level2">
 <h2 class="anchored" data-anchor-id="final-summary">Final Summary</h2>
-<p>At the start, I said that making worlds by hand takes too long and grids look too blocky. By using Voronoi diagrams instead of squares, and Perlin noise to shape the land, we built a system that makes infinite, natural-looking continents.</p>
+<p>At the start, I said that making worlds by hand takes too long and grids look too blocky. By using Voronoi diagrams instead of squares, Perlin noise to shape the land, biomes to color the surface, and rivers to bring it to life, we built a system that generates unique, natural-looking worlds.</p>
 <p>This project explored the intersection of math and art, and the potential of what they have given us and what they will. In the end, I shaped the world in my way.</p>
 </section>
 <section id="note" class="level2">
@@ -574,11 +630,20 @@ Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
 <div id="ref-pnoise" class="csl-entry" role="listitem">
 <div class="csl-left-margin">[7] </div><div class="csl-right-inline">A. Beyeler, <em>Pnoise: A pure python perlin noise generator</em>. (2022). PyPI. Available: <a href="https://pypi.org/project/pnoise/">https://pypi.org/project/pnoise/</a></div>
 </div>
+<div id="ref-whittaker_diagram" class="csl-entry" role="listitem">
+<div class="csl-left-margin">[8] </div><div class="csl-right-inline">Wyoming Biodiversity Information System, <span>“Whittaker biome diagram guide.”</span> <a href="https://gveg.wyobiodiversity.org/application/files/7916/4641/2117/Whittaker_Diagram_Guide.pdf" class="uri">https://gveg.wyobiodiversity.org/application/files/7916/4641/2117/Whittaker_Diagram_Guide.pdf</a>, 2020.</div>
+</div>
+<div id="ref-gaussian_blur" class="csl-entry" role="listitem">
+<div class="csl-left-margin">[9] </div><div class="csl-right-inline">Wikipedia contributors, <span>“Gaussian blur.”</span> <a href="https://en.wikipedia.org/wiki/Gaussian_blur" class="uri">https://en.wikipedia.org/wiki/Gaussian_blur</a>, 2025.</div>
+</div>
+<div id="ref-BARNES2014117" class="csl-entry" role="listitem">
+<div class="csl-left-margin">[10] </div><div class="csl-right-inline">R. Barnes, C. Lehman, and D. Mulla, <span>“Priority-flood: An optimal depression-filling and watershed-labeling algorithm for digital elevation models,”</span> <em>Computers &amp; Geosciences</em>, vol. 62, pp. 117–127, 2014, doi: <a href="https://doi.org/10.1016/j.cageo.2013.04.024">https://doi.org/10.1016/j.cageo.2013.04.024</a>.</div>
+</div>
 <div id="ref-oscar_2025" class="csl-entry" role="listitem">
-<div class="csl-left-margin">[8] </div><div class="csl-right-inline">Academy of Motion Picture Arts and Sciences, <span>“The 97th academy awards.”</span> <a href="https://www.oscars.org/oscars/ceremonies/2025" class="uri">https://www.oscars.org/oscars/ceremonies/2025</a>, 2025.</div>
+<div class="csl-left-margin">[11] </div><div class="csl-right-inline">Academy of Motion Picture Arts and Sciences, <span>“The 97th academy awards.”</span> <a href="https://www.oscars.org/oscars/ceremonies/2025" class="uri">https://www.oscars.org/oscars/ceremonies/2025</a>, 2025.</div>
 </div>
 <div id="ref-pillow" class="csl-entry" role="listitem">
-<div class="csl-left-margin">[9] </div><div class="csl-right-inline">Clark, Alex and Contributors, <em>Pillow (PIL fork) documentation</em>. 2025. Available: <a href="https://pillow.readthedocs.io/en/stable/">https://pillow.readthedocs.io/en/stable/</a></div>
+<div class="csl-left-margin">[12] </div><div class="csl-right-inline">Clark, Alex and Contributors, <em>Pillow (PIL fork) documentation</em>. 2025. Available: <a href="https://pillow.readthedocs.io/en/stable/">https://pillow.readthedocs.io/en/stable/</a></div>
 </div>
 </div>
 
@@ -1044,7 +1109,7 @@ Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="an">author:</span><span class="co"> "Batsambuu Batbold"</span></span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="an">date:</span><span class="co"> "December 16, 2025"</span></span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="an">abstract:</span><span class="co"> |</span></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">  Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">  Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Rivers are generated using priority-flood drainage routing along the Voronoi edges. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.</span></span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="an">bibliography:</span><span class="co"> references.bib</span></span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="an">csl:</span><span class="co"> https://www.zotero.org/styles/ieee</span></span>
@@ -1143,222 +1208,266 @@ Figure&nbsp;7: The exported heightmap and colormap of 50,000 polygons
 <span id="cb4-103"><a href="#cb4-103" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-104"><a href="#cb4-104" aria-hidden="true" tabindex="-1"></a>After assigning Perlin noise as a base altitude, I made some customizations to shape the world exactly how I wanted. Raw Perlin noise doesn't know by itself where an island should be. To fix this, I implemented a two-step shaping process:</span>
 <span id="cb4-105"><a href="#cb4-105" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-106"><a href="#cb4-106" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Island Centers**: I first scatter a specific number of "mountain peaks" (island centers) randomly across the grid. To ensure the land clusters around these peaks, I apply a distance penalty: the further a tile is from a mountain center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent.</span>
+<span id="cb4-106"><a href="#cb4-106" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Centers**: I scatter a number of anchor points (land centers) across the grid. To ensure the land clusters around these anchors, I apply a distance penalty: the further a tile is from a land center, the lower its altitude becomes. This forces the noise to fade into the ocean as it gets further from the center, creating distinct island shapes rather than an infinite continent. By default, these anchors are placed randomly, but I also added an option to choose from preset layouts. For example, placing anchors at the four corners gives us four distinct islands, or placing one in the center gives a single continent.</span>
 <span id="cb4-107"><a href="#cb4-107" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-108"><a href="#cb4-108" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**The Power Curve**: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</span>
-<span id="cb4-111"><a href="#cb4-111" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb4-112"><a href="#cb4-112" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
-<span id="cb4-113"><a href="#cb4-113" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
-<span id="cb4-114"><a href="#cb4-114" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Python Implementation"</span></span>
-<span id="cb4-115"><a href="#cb4-115" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-116"><a href="#cb4-116" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> assignAltitudes(<span class="va">self</span>):</span>
-<span id="cb4-117"><a href="#cb4-117" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb4-118"><a href="#cb4-118" aria-hidden="true" tabindex="-1"></a><span class="co">    Generate terrain elevation using Perlin noise with island masking.</span></span>
-<span id="cb4-119"><a href="#cb4-119" aria-hidden="true" tabindex="-1"></a><span class="co">        </span></span>
-<span id="cb4-120"><a href="#cb4-120" aria-hidden="true" tabindex="-1"></a><span class="co">    The algorithm combines multi-octave Perlin noise with distance-based</span></span>
-<span id="cb4-121"><a href="#cb4-121" aria-hidden="true" tabindex="-1"></a><span class="co">    falloff from randomly placed island centers. A power curve is applied</span></span>
-<span id="cb4-122"><a href="#cb4-122" aria-hidden="true" tabindex="-1"></a><span class="co">    to create gentle coastal slopes transitioning to steeper mountain peaks.</span></span>
-<span id="cb4-123"><a href="#cb4-123" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb4-124"><a href="#cb4-124" aria-hidden="true" tabindex="-1"></a>    scaled_pts <span class="op">=</span> <span class="va">self</span>.points <span class="op">/</span> <span class="va">self</span>.grid_size <span class="op">*</span> <span class="va">self</span>.noise_scale</span>
-<span id="cb4-125"><a href="#cb4-125" aria-hidden="true" tabindex="-1"></a>    noise_vals <span class="op">=</span> np.array([(pnoise2(x, y, octaves<span class="op">=</span><span class="dv">6</span>) <span class="op">+</span> <span class="dv">1</span>) <span class="op">/</span> <span class="dv">2</span> </span>
-<span id="cb4-126"><a href="#cb4-126" aria-hidden="true" tabindex="-1"></a>                            <span class="cf">for</span> x, y <span class="kw">in</span> scaled_pts])</span>
-<span id="cb4-127"><a href="#cb4-127" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb4-128"><a href="#cb4-128" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Randomly place island centers (avoiding edges)</span></span>
-<span id="cb4-129"><a href="#cb4-129" aria-hidden="true" tabindex="-1"></a>    island_centers <span class="op">=</span> np.random.uniform(<span class="fl">0.2</span>, <span class="fl">0.8</span>, (<span class="va">self</span>.cluster, <span class="dv">2</span>)) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
-<span id="cb4-130"><a href="#cb4-130" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb4-131"><a href="#cb4-131" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Distance falloff: points far from island centers become ocean</span></span>
-<span id="cb4-132"><a href="#cb4-132" aria-hidden="true" tabindex="-1"></a>    all_dists <span class="op">=</span> np.array([np.linalg.norm(<span class="va">self</span>.points <span class="op">-</span> c, axis<span class="op">=</span><span class="dv">1</span>) <span class="cf">for</span> c <span class="kw">in</span> island_centers])</span>
-<span id="cb4-133"><a href="#cb4-133" aria-hidden="true" tabindex="-1"></a>    distances <span class="op">=</span> np.<span class="bu">min</span>(all_dists, axis<span class="op">=</span><span class="dv">0</span>)  <span class="co"># Distance to nearest island center</span></span>
-<span id="cb4-134"><a href="#cb4-134" aria-hidden="true" tabindex="-1"></a>    normalized_dists <span class="op">=</span> distances <span class="op">/</span> (<span class="va">self</span>.grid_size <span class="op">/</span> <span class="dv">2</span>)</span>
-<span id="cb4-135"><a href="#cb4-135" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb4-136"><a href="#cb4-136" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Combine noise with distance mask (quadratic falloff)</span></span>
-<span id="cb4-137"><a href="#cb4-137" aria-hidden="true" tabindex="-1"></a>    base_alt <span class="op">=</span> noise_vals <span class="op">-</span> normalized_dists <span class="op">**</span> <span class="dv">2</span></span>
-<span id="cb4-138"><a href="#cb4-138" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb4-139"><a href="#cb4-139" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Apply power curve to land for realistic elevation profile</span></span>
-<span id="cb4-140"><a href="#cb4-140" aria-hidden="true" tabindex="-1"></a>    land_mask <span class="op">=</span> base_alt <span class="op">&gt;</span> <span class="va">self</span>.water_level</span>
-<span id="cb4-141"><a href="#cb4-141" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes <span class="op">=</span> base_alt.copy()</span>
-<span id="cb4-142"><a href="#cb4-142" aria-hidden="true" tabindex="-1"></a>    land_vals <span class="op">=</span> base_alt[land_mask]</span>
-<span id="cb4-143"><a href="#cb4-143" aria-hidden="true" tabindex="-1"></a>    land_normalized <span class="op">=</span> (land_vals <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span>
-<span id="cb4-144"><a href="#cb4-144" aria-hidden="true" tabindex="-1"></a>    land_normalized <span class="op">=</span> np.clip(land_normalized, <span class="dv">0</span>, <span class="dv">1</span>)</span>
-<span id="cb4-145"><a href="#cb4-145" aria-hidden="true" tabindex="-1"></a>        </span>
-<span id="cb4-146"><a href="#cb4-146" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Piecewise curve: gentle near coast, steeper inland for mountains</span></span>
-<span id="cb4-147"><a href="#cb4-147" aria-hidden="true" tabindex="-1"></a>    sharpened <span class="op">=</span> np.where(</span>
-<span id="cb4-148"><a href="#cb4-148" aria-hidden="true" tabindex="-1"></a>        land_normalized <span class="op">&lt;</span> <span class="fl">0.35</span>,</span>
-<span id="cb4-149"><a href="#cb4-149" aria-hidden="true" tabindex="-1"></a>        land_normalized <span class="op">*</span> <span class="fl">0.8</span>,  <span class="co"># Gentle coastal slope</span></span>
-<span id="cb4-150"><a href="#cb4-150" aria-hidden="true" tabindex="-1"></a>        <span class="fl">0.28</span> <span class="op">+</span> (land_normalized <span class="op">-</span> <span class="fl">0.35</span>) <span class="op">**</span> <span class="fl">1.3</span> <span class="op">*</span> <span class="dv">3</span>  <span class="co"># Steeper mountain peaks</span></span>
-<span id="cb4-151"><a href="#cb4-151" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb4-152"><a href="#cb4-152" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes[land_mask] <span class="op">=</span> <span class="va">self</span>.water_level <span class="op">+</span> sharpened <span class="op">*</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span>
-<span id="cb4-153"><a href="#cb4-153" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb4-154"><a href="#cb4-154" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-155"><a href="#cb4-155" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-156"><a href="#cb4-156" aria-hidden="true" tabindex="-1"></a><span class="fu">## Biome Assignment</span></span>
-<span id="cb4-157"><a href="#cb4-157" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-158"><a href="#cb4-158" aria-hidden="true" tabindex="-1"></a>With the heightmap complete, we have a basic definition of land and sea.</span>
-<span id="cb4-159"><a href="#cb4-159" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-160"><a href="#cb4-160" aria-hidden="true" tabindex="-1"></a><span class="al">![Land and Ocean tiles are assigned for 5,000 polygons](figures/land.png)</span>{#fig-land}</span>
-<span id="cb4-161"><a href="#cb4-161" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-162"><a href="#cb4-162" aria-hidden="true" tabindex="-1"></a>@fig-land is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. </span>
-<span id="cb4-163"><a href="#cb4-163" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-164"><a href="#cb4-164" aria-hidden="true" tabindex="-1"></a>Our initial strategy relied solely on altitude. While altitude separates ocean from land, it isn't enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:</span>
+<span id="cb4-108"><a href="#cb4-108" aria-hidden="true" tabindex="-1"></a><span class="al">![Preset layout with anchors at the four corners creates four distinct islands](figures/custom-land-only.png)</span>{#fig-anchors width=75%}</span>
+<span id="cb4-109"><a href="#cb4-109" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-110"><a href="#cb4-110" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- </span><span class="al">TODO</span><span class="co">: update custom-land-only.png if you change the seed or layout --&gt;</span></span>
+<span id="cb4-111"><a href="#cb4-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-112"><a href="#cb4-112" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**The Power Curve**: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</span>
+<span id="cb4-115"><a href="#cb4-115" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb4-116"><a href="#cb4-116" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
+<span id="cb4-117"><a href="#cb4-117" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
+<span id="cb4-118"><a href="#cb4-118" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Python Implementation"</span></span>
+<span id="cb4-119"><a href="#cb4-119" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-120"><a href="#cb4-120" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> assignAltitudes(<span class="va">self</span>):</span>
+<span id="cb4-121"><a href="#cb4-121" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb4-122"><a href="#cb4-122" aria-hidden="true" tabindex="-1"></a><span class="co">    Set per-region elevation using Perlin noise + land-anchor falloff.</span></span>
+<span id="cb4-123"><a href="#cb4-123" aria-hidden="true" tabindex="-1"></a><span class="co">    Supports both random and user-defined anchor placement.</span></span>
+<span id="cb4-124"><a href="#cb4-124" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb4-125"><a href="#cb4-125" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Scale point coordinates to control feature size in noise space</span></span>
+<span id="cb4-126"><a href="#cb4-126" aria-hidden="true" tabindex="-1"></a>    scaled_pts <span class="op">=</span> <span class="va">self</span>.points <span class="op">/</span> <span class="va">self</span>.grid_size <span class="op">*</span> <span class="va">self</span>.noise_scale</span>
+<span id="cb4-127"><a href="#cb4-127" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Generate Perlin noise with 6 octaves (layers of detail),</span></span>
+<span id="cb4-128"><a href="#cb4-128" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then shift from [-1, 1] to [0, 1] range</span></span>
+<span id="cb4-129"><a href="#cb4-129" aria-hidden="true" tabindex="-1"></a>    noise_vals <span class="op">=</span> np.array([(pnoise2(x, y, octaves<span class="op">=</span><span class="dv">6</span>) <span class="op">+</span> <span class="dv">1</span>) <span class="op">/</span> <span class="dv">2</span></span>
+<span id="cb4-130"><a href="#cb4-130" aria-hidden="true" tabindex="-1"></a>                           <span class="cf">for</span> x, y <span class="kw">in</span> scaled_pts])</span>
+<span id="cb4-131"><a href="#cb4-131" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-132"><a href="#cb4-132" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use user-provided anchors, or scatter random ones within</span></span>
+<span id="cb4-133"><a href="#cb4-133" aria-hidden="true" tabindex="-1"></a>    <span class="co"># the inner 20%-80% of the grid to keep land away from edges</span></span>
+<span id="cb4-134"><a href="#cb4-134" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.custom_anchors <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb4-135"><a href="#cb4-135" aria-hidden="true" tabindex="-1"></a>        anchors <span class="op">=</span> np.array(<span class="va">self</span>.custom_anchors) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
+<span id="cb4-136"><a href="#cb4-136" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb4-137"><a href="#cb4-137" aria-hidden="true" tabindex="-1"></a>        anchors <span class="op">=</span> np.random.uniform(<span class="fl">0.2</span>, <span class="fl">0.8</span>, (<span class="va">self</span>.land_centers, <span class="dv">2</span>)) <span class="op">*</span> <span class="va">self</span>.grid_size</span>
+<span id="cb4-138"><a href="#cb4-138" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-139"><a href="#cb4-139" aria-hidden="true" tabindex="-1"></a>    <span class="co"># For each tile, find the distance to the nearest anchor</span></span>
+<span id="cb4-140"><a href="#cb4-140" aria-hidden="true" tabindex="-1"></a>    <span class="co"># and normalize it relative to half the grid size</span></span>
+<span id="cb4-141"><a href="#cb4-141" aria-hidden="true" tabindex="-1"></a>    all_dists <span class="op">=</span> np.array([np.linalg.norm(<span class="va">self</span>.points <span class="op">-</span> c, axis<span class="op">=</span><span class="dv">1</span>) <span class="cf">for</span> c <span class="kw">in</span> anchors])</span>
+<span id="cb4-142"><a href="#cb4-142" aria-hidden="true" tabindex="-1"></a>    normalized_dists <span class="op">=</span> np.<span class="bu">min</span>(all_dists, axis<span class="op">=</span><span class="dv">0</span>) <span class="op">/</span> (<span class="va">self</span>.grid_size <span class="op">/</span> <span class="dv">2</span>)</span>
+<span id="cb4-143"><a href="#cb4-143" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Subtract squared distance - quadratic falloff pushes</span></span>
+<span id="cb4-144"><a href="#cb4-144" aria-hidden="true" tabindex="-1"></a>    <span class="co"># tiles far from anchors below the water level</span></span>
+<span id="cb4-145"><a href="#cb4-145" aria-hidden="true" tabindex="-1"></a>    base_alt <span class="op">=</span> noise_vals <span class="op">-</span> normalized_dists <span class="op">**</span> <span class="dv">2</span></span>
+<span id="cb4-146"><a href="#cb4-146" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-147"><a href="#cb4-147" aria-hidden="true" tabindex="-1"></a>    <span class="co"># --- Piecewise power curve: gentle near coast, steep inland ---</span></span>
+<span id="cb4-148"><a href="#cb4-148" aria-hidden="true" tabindex="-1"></a>    land_mask <span class="op">=</span> base_alt <span class="op">&gt;</span> <span class="va">self</span>.water_level</span>
+<span id="cb4-149"><a href="#cb4-149" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes <span class="op">=</span> base_alt.copy()</span>
+<span id="cb4-150"><a href="#cb4-150" aria-hidden="true" tabindex="-1"></a>    land_vals <span class="op">=</span> base_alt[land_mask]</span>
+<span id="cb4-151"><a href="#cb4-151" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Normalize land heights to [0, 1] above water level</span></span>
+<span id="cb4-152"><a href="#cb4-152" aria-hidden="true" tabindex="-1"></a>    land_norm <span class="op">=</span> np.clip((land_vals <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level), <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb4-153"><a href="#cb4-153" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-154"><a href="#cb4-154" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Below 35% = coastal zone: flatten to 80% of original height</span></span>
+<span id="cb4-155"><a href="#cb4-155" aria-hidden="true" tabindex="-1"></a>    coastal <span class="op">=</span> land_norm <span class="op">&lt;</span> <span class="fl">0.35</span></span>
+<span id="cb4-156"><a href="#cb4-156" aria-hidden="true" tabindex="-1"></a>    sharpened <span class="op">=</span> np.empty_like(land_norm)</span>
+<span id="cb4-157"><a href="#cb4-157" aria-hidden="true" tabindex="-1"></a>    sharpened[coastal] <span class="op">=</span> land_norm[coastal] <span class="op">*</span> <span class="fl">0.8</span></span>
+<span id="cb4-158"><a href="#cb4-158" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Above 35% = inland: start at 0.28 (matches coastal edge: 0.35*0.8),</span></span>
+<span id="cb4-159"><a href="#cb4-159" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then rise steeply with exponent 1.3, amplified by 3x</span></span>
+<span id="cb4-160"><a href="#cb4-160" aria-hidden="true" tabindex="-1"></a>    sharpened[<span class="op">~</span>coastal] <span class="op">=</span> <span class="fl">0.28</span> <span class="op">+</span> np.power(land_norm[<span class="op">~</span>coastal] <span class="op">-</span> <span class="fl">0.35</span>, <span class="fl">1.3</span>) <span class="op">*</span> <span class="dv">3</span></span>
+<span id="cb4-161"><a href="#cb4-161" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Map shaped values back to the full altitude range</span></span>
+<span id="cb4-162"><a href="#cb4-162" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.altitudes[land_mask] <span class="op">=</span> <span class="va">self</span>.water_level <span class="op">+</span> sharpened <span class="op">*</span> (<span class="fl">1.0</span> <span class="op">-</span> <span class="va">self</span>.water_level)</span>
+<span id="cb4-163"><a href="#cb4-163" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb4-164"><a href="#cb4-164" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-165"><a href="#cb4-165" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-166"><a href="#cb4-166" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Proximity to water**: Tiles closer to the ocean received a moisture boost.</span>
-<span id="cb4-167"><a href="#cb4-167" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Elevation Adjustment**: High-altitude areas generally became drier, though I added a special exception to ensure the very highest peaks retained enough "moisture" value to support snow caps.</span>
-<span id="cb4-168"><a href="#cb4-168" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-169"><a href="#cb4-169" aria-hidden="true" tabindex="-1"></a>By combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a classification similar to Red Blob Games <span class="co">[</span><span class="ot">@patel2015polygonal</span><span class="co">]</span>, resulting in 10 distinct biome types. For example:</span>
-<span id="cb4-170"><a href="#cb4-170" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-171"><a href="#cb4-171" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>High Altitude + Low Moisture $\rightarrow$ Scorched / Rocky Mountain</span>
-<span id="cb4-172"><a href="#cb4-172" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>High Altitude + High Moisture $\rightarrow$ Snow</span>
-<span id="cb4-173"><a href="#cb4-173" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>Mid Altitude + High Moisture $\rightarrow$ Forest</span>
-<span id="cb4-174"><a href="#cb4-174" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>Low Altitude + Low Moisture $\rightarrow$ Desert</span>
+<span id="cb4-166"><a href="#cb4-166" aria-hidden="true" tabindex="-1"></a><span class="fu">## Biome Assignment</span></span>
+<span id="cb4-167"><a href="#cb4-167" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-168"><a href="#cb4-168" aria-hidden="true" tabindex="-1"></a>With the heightmap complete, we have a basic definition of land and sea.</span>
+<span id="cb4-169"><a href="#cb4-169" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-170"><a href="#cb4-170" aria-hidden="true" tabindex="-1"></a><span class="al">![Land and Ocean tiles are assigned for 5,000 polygons](figures/land.png)</span>{#fig-land width=75%}</span>
+<span id="cb4-171"><a href="#cb4-171" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-172"><a href="#cb4-172" aria-hidden="true" tabindex="-1"></a>@fig-land is a convincing start, it resembles a landmass. However, the land is all one color and boring. Real-world terrain is vibrant: we have forests, deserts, snowy peaks, and swamps. In short, we have **biomes**. </span>
+<span id="cb4-173"><a href="#cb4-173" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-174"><a href="#cb4-174" aria-hidden="true" tabindex="-1"></a>Our initial strategy relied solely on altitude. While altitude separates ocean from land, it isn't enough to distinguish a Desert from a Rainforest. They might be at the same height, but they look completely different. The missing variable is Moisture. To simulate this, I generated a second Perlin Noise map specifically for moisture. I then applied environmental modifiers to make it physically plausible:</span>
 <span id="cb4-175"><a href="#cb4-175" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-178"><a href="#cb4-178" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb4-179"><a href="#cb4-179" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
-<span id="cb4-180"><a href="#cb4-180" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
-<span id="cb4-181"><a href="#cb4-181" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Classification Logic"</span></span>
-<span id="cb4-182"><a href="#cb4-182" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-183"><a href="#cb4-183" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_biome_color(<span class="va">self</span>, e, m):</span>
-<span id="cb4-184"><a href="#cb4-184" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
-<span id="cb4-185"><a href="#cb4-185" aria-hidden="true" tabindex="-1"></a><span class="co">    Returns color based on elevation (e) and moisture (m).</span></span>
-<span id="cb4-186"><a href="#cb4-186" aria-hidden="true" tabindex="-1"></a><span class="co">    Both e and m are normalized to 0.0 - 1.0.</span></span>
-<span id="cb4-187"><a href="#cb4-187" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
-<span id="cb4-188"><a href="#cb4-188" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb4-189"><a href="#cb4-189" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&lt;</span> <span class="fl">0.1</span>:</span>
-<span id="cb4-190"><a href="#cb4-190" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'BEACH'</span>]</span>
-<span id="cb4-191"><a href="#cb4-191" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.85</span>:</span>
-<span id="cb4-192"><a href="#cb4-192" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'SNOW'</span>]</span>
-<span id="cb4-193"><a href="#cb4-193" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.60</span>:</span>
-<span id="cb4-194"><a href="#cb4-194" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.4</span>:</span>
-<span id="cb4-195"><a href="#cb4-195" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'MOUNTAIN'</span>] </span>
-<span id="cb4-196"><a href="#cb4-196" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.7</span>:</span>
-<span id="cb4-197"><a href="#cb4-197" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'TUNDRA'</span>]    </span>
-<span id="cb4-198"><a href="#cb4-198" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'SNOW'</span>]          </span>
-<span id="cb4-199"><a href="#cb4-199" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.35</span>:</span>
-<span id="cb4-200"><a href="#cb4-200" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.4</span>:</span>
-<span id="cb4-201"><a href="#cb4-201" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]  </span>
-<span id="cb4-202"><a href="#cb4-202" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'TAIGA'</span>]          </span>
-<span id="cb4-203"><a href="#cb4-203" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> e <span class="op">&gt;</span> <span class="fl">0.25</span>:</span>
-<span id="cb4-204"><a href="#cb4-204" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.3</span>:</span>
-<span id="cb4-205"><a href="#cb4-205" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'DESERT'</span>]    </span>
-<span id="cb4-206"><a href="#cb4-206" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.6</span>:</span>
-<span id="cb4-207"><a href="#cb4-207" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]  </span>
-<span id="cb4-208"><a href="#cb4-208" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'FOREST'</span>]       </span>
-<span id="cb4-209"><a href="#cb4-209" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.3</span>:</span>
-<span id="cb4-210"><a href="#cb4-210" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'DESERT'</span>]        </span>
-<span id="cb4-211"><a href="#cb4-211" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> m <span class="op">&lt;</span> <span class="fl">0.6</span>:</span>
-<span id="cb4-212"><a href="#cb4-212" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'GRASSLAND'</span>]      </span>
-<span id="cb4-213"><a href="#cb4-213" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">self</span>.BIOME_COLORS[<span class="st">'RAINFOREST'</span>]   </span>
-<span id="cb4-214"><a href="#cb4-214" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb4-215"><a href="#cb4-215" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-216"><a href="#cb4-216" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-217"><a href="#cb4-217" aria-hidden="true" tabindex="-1"></a><span class="al">![Terrain with biome colorings](figures/biomes.png)</span>{#fig-biomes}</span>
-<span id="cb4-218"><a href="#cb4-218" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-219"><a href="#cb4-219" aria-hidden="true" tabindex="-1"></a>As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks in the center.</span>
+<span id="cb4-176"><a href="#cb4-176" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Proximity to water**: Tiles closer to the ocean received a moisture boost.</span>
+<span id="cb4-177"><a href="#cb4-177" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Elevation Adjustment**: High-altitude areas generally became drier, though I added a special exception to ensure the very highest peaks retained enough "moisture" value to support snow caps.</span>
+<span id="cb4-178"><a href="#cb4-178" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-179"><a href="#cb4-179" aria-hidden="true" tabindex="-1"></a>By combining these two values (Altitude and Moisture), we can classify every tile into a specific biome. I implemented a Whittaker-style biome classification <span class="co">[</span><span class="ot">@whittaker_diagram</span><span class="co">]</span>, similar to Red Blob Games <span class="co">[</span><span class="ot">@patel2015polygonal</span><span class="co">]</span>, resulting in 10 distinct biome types. For example:</span>
+<span id="cb4-180"><a href="#cb4-180" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-181"><a href="#cb4-181" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>High Altitude + Low Moisture $\rightarrow$ Scorched / Rocky Mountain</span>
+<span id="cb4-182"><a href="#cb4-182" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>High Altitude + High Moisture $\rightarrow$ Snow</span>
+<span id="cb4-183"><a href="#cb4-183" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>Mid Altitude + High Moisture $\rightarrow$ Forest</span>
+<span id="cb4-184"><a href="#cb4-184" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>Low Altitude + Low Moisture $\rightarrow$ Desert</span>
+<span id="cb4-185"><a href="#cb4-185" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-186"><a href="#cb4-186" aria-hidden="true" tabindex="-1"></a>However, using this rigid classification directly looks terrible. The boundaries between biomes are sharp and artificial - a tile is either 100% forest or 100% desert with no in-between. Real nature doesn't work like that. To fix this, I used a three-step pipeline:</span>
+<span id="cb4-187"><a href="#cb4-187" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-188"><a href="#cb4-188" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>**Lookup Table (LUT)**: I evaluate the Whittaker classification on a $256 \times 256$ grid (elevation × moisture), producing a hard-edged biome color map.</span>
+<span id="cb4-189"><a href="#cb4-189" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-190"><a href="#cb4-190" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>**Gaussian Blur** <span class="co">[</span><span class="ot">@gaussian_blur</span><span class="co">]</span>: Using SciPy's <span class="in">`gaussian_filter`</span>, I blur the table with a Gaussian kernel ($\sigma = 8$). This dissolves the sharp boundaries into smooth gradients - a forest fades into grassland instead of cutting off abruptly.</span>
+<span id="cb4-191"><a href="#cb4-191" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-192"><a href="#cb4-192" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>**Bilinear Interpolation**: When looking up a tile's color, I interpolate between the four surrounding cells in the blurred table instead of snapping to the nearest one, removing any remaining banding.</span>
+<span id="cb4-193"><a href="#cb4-193" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-196"><a href="#cb4-196" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb4-197"><a href="#cb4-197" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
+<span id="cb4-198"><a href="#cb4-198" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
+<span id="cb4-199"><a href="#cb4-199" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Biome Coloring Pipeline"</span></span>
+<span id="cb4-200"><a href="#cb4-200" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-201"><a href="#cb4-201" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_biome_table(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-202"><a href="#cb4-202" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Pre-compute a Gaussian-blurred biome color LUT indexed by (elevation, moisture)."""</span></span>
+<span id="cb4-203"><a href="#cb4-203" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> <span class="va">self</span>.BIOME_TABLE_RES  <span class="co"># 256x256 grid resolution</span></span>
+<span id="cb4-204"><a href="#cb4-204" aria-hidden="true" tabindex="-1"></a>    table <span class="op">=</span> np.zeros((res, res, <span class="dv">3</span>))  <span class="co"># RGB color for each (elev, moisture) pair</span></span>
+<span id="cb4-205"><a href="#cb4-205" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-206"><a href="#cb4-206" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Fill every cell with the hard Whittaker biome color</span></span>
+<span id="cb4-207"><a href="#cb4-207" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(res):</span>
+<span id="cb4-208"><a href="#cb4-208" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(res):</span>
+<span id="cb4-209"><a href="#cb4-209" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Normalize indices to [0, 1] for elevation and moisture</span></span>
+<span id="cb4-210"><a href="#cb4-210" aria-hidden="true" tabindex="-1"></a>            table[i, j] <span class="op">=</span> <span class="va">self</span>._get_raw_biome_color(i <span class="op">/</span> (res <span class="op">-</span> <span class="dv">1</span>), j <span class="op">/</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb4-211"><a href="#cb4-211" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-212"><a href="#cb4-212" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Blur each color channel separately; sigma=8 controls</span></span>
+<span id="cb4-213"><a href="#cb4-213" aria-hidden="true" tabindex="-1"></a>    <span class="co"># how wide the transition zones are between biomes.</span></span>
+<span id="cb4-214"><a href="#cb4-214" aria-hidden="true" tabindex="-1"></a>    <span class="co"># mode='nearest' repeats edge colors instead of fading to black</span></span>
+<span id="cb4-215"><a href="#cb4-215" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">3</span>):</span>
+<span id="cb4-216"><a href="#cb4-216" aria-hidden="true" tabindex="-1"></a>        table[:, :, c] <span class="op">=</span> gaussian_filter(table[:, :, c], sigma<span class="op">=</span><span class="fl">8.0</span>, mode<span class="op">=</span><span class="st">'nearest'</span>)</span>
+<span id="cb4-217"><a href="#cb4-217" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-218"><a href="#cb4-218" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._biome_table <span class="op">=</span> table</span>
+<span id="cb4-219"><a href="#cb4-219" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-220"><a href="#cb4-220" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-221"><a href="#cb4-221" aria-hidden="true" tabindex="-1"></a>---</span>
-<span id="cb4-222"><a href="#cb4-222" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-223"><a href="#cb4-223" aria-hidden="true" tabindex="-1"></a><span class="fu">## 2D Interactive Playground</span></span>
-<span id="cb4-224"><a href="#cb4-224" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-225"><a href="#cb4-225" aria-hidden="true" tabindex="-1"></a>Up to this point, I was happy with the logic of my 2D map. However, tuning the parameters to get the exact look I wanted required endless tweaking. It became incredibly annoying to re-run the entire script every time I wanted to change a noise value by $0.1$. So, I built an interactive dashboard to visualize the changes in real-time. Since the tool was so useful for debugging, I decided to host it publicly on Streamlit so you can try it yourself.</span>
-<span id="cb4-226"><a href="#cb4-226" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-227"><a href="#cb4-227" aria-hidden="true" tabindex="-1"></a><span class="co">[</span><span class="ot">**🔗 Click Here to Try the Interactive Map Generator**</span><span class="co">](https://basabu1-map-generation-app-fut9qy.streamlit.app/)</span></span>
+<span id="cb4-221"><a href="#cb4-221" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_color(<span class="va">self</span>, alt, moisture):</span>
+<span id="cb4-222"><a href="#cb4-222" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Return a smoothly blended biome color using the blurred lookup table."""</span></span>
+<span id="cb4-223"><a href="#cb4-223" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> alt <span class="op">&lt;</span> <span class="va">self</span>.water_level:</span>
+<span id="cb4-224"><a href="#cb4-224" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Ocean tiles: blend between shallow and deep blue based on depth</span></span>
+<span id="cb4-225"><a href="#cb4-225" aria-hidden="true" tabindex="-1"></a>        depth <span class="op">=</span> np.clip((<span class="va">self</span>.water_level <span class="op">-</span> alt) <span class="op">/</span> <span class="va">self</span>.water_level, <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb4-226"><a href="#cb4-226" aria-hidden="true" tabindex="-1"></a>        t <span class="op">=</span> depth <span class="op">**</span> <span class="fl">0.7</span>  <span class="co"># power &lt; 1 brightens shallow areas for coastal contrast</span></span>
+<span id="cb4-227"><a href="#cb4-227" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="bu">tuple</span>(shallow <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> t) <span class="op">+</span> deep <span class="op">*</span> t)</span>
 <span id="cb4-228"><a href="#cb4-228" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-229"><a href="#cb4-229" aria-hidden="true" tabindex="-1"></a>The app gives you control over the key generation parameters:</span>
-<span id="cb4-230"><a href="#cb4-230" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-231"><a href="#cb4-231" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Random Seed**: Change this to generate a completely different world layout.</span>
-<span id="cb4-232"><a href="#cb4-232" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Noise Scale**: Controls the "zoom" of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.</span>
-<span id="cb4-233"><a href="#cb4-233" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Water Level**: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.</span>
-<span id="cb4-234"><a href="#cb4-234" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Island Clusters**: Determines the number of mountain peaks (island centers) to generate.</span>
-<span id="cb4-235"><a href="#cb4-235" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Resolution**: The number of Voronoi cells. More points = finer detail (but slower generation).</span>
-<span id="cb4-236"><a href="#cb4-236" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-237"><a href="#cb4-237" aria-hidden="true" tabindex="-1"></a><span class="al">![Screenshot of the Streamlit app](figures/streamlit-screenshot.png)</span>{#fig-app}</span>
-<span id="cb4-238"><a href="#cb4-238" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-229"><a href="#cb4-229" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Land tiles: map altitude and moisture to table coordinates</span></span>
+<span id="cb4-230"><a href="#cb4-230" aria-hidden="true" tabindex="-1"></a>    e <span class="op">=</span> np.clip((alt <span class="op">-</span> <span class="va">self</span>.water_level) <span class="op">/</span> <span class="fl">0.25</span>, <span class="dv">0</span>, <span class="dv">1</span>)  <span class="co"># normalize land elevation</span></span>
+<span id="cb4-231"><a href="#cb4-231" aria-hidden="true" tabindex="-1"></a>    m <span class="op">=</span> np.clip(moisture, <span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb4-232"><a href="#cb4-232" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-233"><a href="#cb4-233" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Convert to table indices and interpolate between 4 neighbors</span></span>
+<span id="cb4-234"><a href="#cb4-234" aria-hidden="true" tabindex="-1"></a>    ei <span class="op">=</span> <span class="bu">int</span>(e <span class="op">*</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb4-235"><a href="#cb4-235" aria-hidden="true" tabindex="-1"></a>    mi <span class="op">=</span> <span class="bu">int</span>(m <span class="op">*</span> (res <span class="op">-</span> <span class="dv">1</span>))</span>
+<span id="cb4-236"><a href="#cb4-236" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ... bilinear interpolation between 4 neighboring table entries ...</span></span>
+<span id="cb4-237"><a href="#cb4-237" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">tuple</span>(color)</span>
+<span id="cb4-238"><a href="#cb4-238" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
 <span id="cb4-239"><a href="#cb4-239" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-240"><a href="#cb4-240" aria-hidden="true" tabindex="-1"></a>With this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, and we have the controls. Now, it is time to add the third dimension.</span>
+<span id="cb4-240"><a href="#cb4-240" aria-hidden="true" tabindex="-1"></a><span class="al">![Terrain with biome colorings and smooth Gaussian transitions](figures/biomes.png)</span>{#fig-biomes width=75%}</span>
 <span id="cb4-241"><a href="#cb4-241" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-242"><a href="#cb4-242" aria-hidden="true" tabindex="-1"></a>---</span>
+<span id="cb4-242"><a href="#cb4-242" aria-hidden="true" tabindex="-1"></a>As seen in @fig-biomes, the map is now visually diverse. We see sandy beaches along the coastline, green forests filling the midlands, and white snow capping the highest peaks. Thanks to the Gaussian blur on the biome table, the transitions between biomes are smooth and gradual rather than abrupt.</span>
 <span id="cb4-243"><a href="#cb4-243" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-244"><a href="#cb4-244" aria-hidden="true" tabindex="-1"></a><span class="fu"># Stage 3: Continents</span></span>
+<span id="cb4-244"><a href="#cb4-244" aria-hidden="true" tabindex="-1"></a><span class="fu">## River Network</span></span>
 <span id="cb4-245"><a href="#cb4-245" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-246"><a href="#cb4-246" aria-hidden="true" tabindex="-1"></a>In the 2D map, I assigned colors based on the altitude of each Voronoi region. However, a flat map can only tell us so much. To fully utilize the altitude data and satisfy my curiosity about what this world would look like as a real landscape, I decided to move into the third dimension.</span>
+<span id="cb4-246"><a href="#cb4-246" aria-hidden="true" tabindex="-1"></a>With biomes in place, the map was looking good, but something was still missing - rivers. Real landscapes have water flowing from mountains down to the ocean, and adding that would bring the map to life.</span>
 <span id="cb4-247"><a href="#cb4-247" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-248"><a href="#cb4-248" aria-hidden="true" tabindex="-1"></a>I chose **Blender**, a free and open-source 3D creation software, to render the map. Blender is a widely used tool for visual effects and modeling. Notably, the animated film *Flow*, which won an Academy Award in 2025, was created using Blender <span class="co">[</span><span class="ot">@oscar_2025</span><span class="co">]</span>.</span>
+<span id="cb4-248"><a href="#cb4-248" aria-hidden="true" tabindex="-1"></a>I implemented a river system using the Voronoi mesh structure. The idea is to use the connections between Voronoi vertices (the circumcenters of the Delaunay triangles) as potential river channels. Here is how it works:</span>
 <span id="cb4-249"><a href="#cb4-249" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-250"><a href="#cb4-250" aria-hidden="true" tabindex="-1"></a><span class="fu">## Transfer to 3D</span></span>
+<span id="cb4-250"><a href="#cb4-250" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>**Priority-Flood Flow Routing** <span class="co">[</span><span class="ot">@BARNES2014117</span><span class="co">]</span>: Starting from all ocean vertices, the algorithm floods outward using a min-heap (priority queue), always processing the lowest-elevation vertex first. Each visited vertex records where it was reached from, creating a flow-to pointer. This builds a spanning tree where every land vertex has a single downhill path to the sea.</span>
 <span id="cb4-251"><a href="#cb4-251" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-252"><a href="#cb4-252" aria-hidden="true" tabindex="-1"></a>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a **Heightmap**: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also requires a **Colormap** to paint the surface.</span>
+<span id="cb4-252"><a href="#cb4-252" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>**Flow Accumulation**: Starting from the highest vertices, each one passes its accumulated count downstream. Vertices near mountaintops have low counts, while those near the coast collect from hundreds of upstream sources. This count directly controls river width and opacity - thicker lines for major rivers, thin faint lines for small streams.</span>
 <span id="cb4-253"><a href="#cb4-253" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-254"><a href="#cb4-254" aria-hidden="true" tabindex="-1"></a>I wrote a script using the **Python Imaging Library (PIL/Pillow)** <span class="co">[</span><span class="ot">@pillow</span><span class="co">]</span> to export these images directly from my generation code. </span>
+<span id="cb4-254"><a href="#cb4-254" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>**Two-Pass Source Selection**: The first pass picks high-accumulation vertices with long paths to water as the main river sources. The second pass fills in shorter tributaries to improve coverage, and an occupancy grid keeps rivers from clustering too close together.</span>
 <span id="cb4-255"><a href="#cb4-255" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-258"><a href="#cb4-258" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
-<span id="cb4-259"><a href="#cb4-259" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
-<span id="cb4-260"><a href="#cb4-260" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
-<span id="cb4-261"><a href="#cb4-261" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Heightmap Export Code"</span></span>
-<span id="cb4-262"><a href="#cb4-262" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-263"><a href="#cb4-263" aria-hidden="true" tabindex="-1"></a><span class="co"># Normalize altitudes to 0.0 - 1.0 range</span></span>
-<span id="cb4-264"><a href="#cb4-264" aria-hidden="true" tabindex="-1"></a>h_min, h_max <span class="op">=</span> heights.<span class="bu">min</span>(), heights.<span class="bu">max</span>()</span>
-<span id="cb4-265"><a href="#cb4-265" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> (heights <span class="op">-</span> h_min) <span class="op">/</span> (h_max <span class="op">-</span> h_min) </span>
-<span id="cb4-266"><a href="#cb4-266" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-267"><a href="#cb4-267" aria-hidden="true" tabindex="-1"></a><span class="co"># Transform to 0-255 integer range for image pixels</span></span>
-<span id="cb4-268"><a href="#cb4-268" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> (heights <span class="op">*</span> <span class="dv">255</span>).astype(np.uint8) </span>
+<span id="cb4-256"><a href="#cb4-256" aria-hidden="true" tabindex="-1"></a>The rivers are drawn with width and opacity scaled by their flow accumulation - wider, more visible lines for major rivers and thin, faint lines for small streams.</span>
+<span id="cb4-257"><a href="#cb4-257" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-258"><a href="#cb4-258" aria-hidden="true" tabindex="-1"></a><span class="al">![Terrain with rivers flowing from mountains to the ocean](figures/rivers.png)</span>{#fig-rivers width=75%}</span>
+<span id="cb4-259"><a href="#cb4-259" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-260"><a href="#cb4-260" aria-hidden="true" tabindex="-1"></a>As seen in @fig-rivers, the rivers add a lot of life to the map. They naturally follow the terrain, flowing downhill from the peaks and reaching the ocean.</span>
+<span id="cb4-261"><a href="#cb4-261" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-262"><a href="#cb4-262" aria-hidden="true" tabindex="-1"></a>---</span>
+<span id="cb4-263"><a href="#cb4-263" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-264"><a href="#cb4-264" aria-hidden="true" tabindex="-1"></a><span class="fu">## 2D Interactive Playground</span></span>
+<span id="cb4-265"><a href="#cb4-265" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-266"><a href="#cb4-266" aria-hidden="true" tabindex="-1"></a>Up to this point, I was happy with the logic of my 2D map. However, tuning the parameters to get the exact look I wanted required endless tweaking. It became incredibly annoying to re-run the entire script every time I wanted to change a noise value by $0.1$. So, I built an interactive dashboard to visualize the changes in real-time. Since the tool was so useful for debugging, I decided to host it publicly on Streamlit so you can try it yourself.</span>
+<span id="cb4-267"><a href="#cb4-267" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-268"><a href="#cb4-268" aria-hidden="true" tabindex="-1"></a><span class="co">[</span><span class="ot">**🔗 Click Here to Try the Interactive Map Generator**</span><span class="co">](https://basabu1-map-generation-app-fut9qy.streamlit.app/)</span></span>
 <span id="cb4-269"><a href="#cb4-269" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-270"><a href="#cb4-270" aria-hidden="true" tabindex="-1"></a><span class="co"># Flip upside down (Blender's UV coordinates are often flipped relative to arrays)</span></span>
-<span id="cb4-271"><a href="#cb4-271" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> np.flipud(heights) </span>
-<span id="cb4-272"><a href="#cb4-272" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-273"><a href="#cb4-273" aria-hidden="true" tabindex="-1"></a><span class="co"># Save the image as Grayscale (Mode 'L')</span></span>
-<span id="cb4-274"><a href="#cb4-274" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> Image.fromarray(heights, mode<span class="op">=</span><span class="st">"L"</span>) </span>
-<span id="cb4-275"><a href="#cb4-275" aria-hidden="true" tabindex="-1"></a>img.save(<span class="st">"heightmap.png"</span>)</span>
-<span id="cb4-276"><a href="#cb4-276" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb4-277"><a href="#cb4-277" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-270"><a href="#cb4-270" aria-hidden="true" tabindex="-1"></a>The app gives you control over the key generation parameters:</span>
+<span id="cb4-271"><a href="#cb4-271" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-272"><a href="#cb4-272" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Random Seed**: Change this to generate a completely different world layout.</span>
+<span id="cb4-273"><a href="#cb4-273" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Noise Scale**: Controls the "zoom" of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.</span>
+<span id="cb4-274"><a href="#cb4-274" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Water Level**: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.</span>
+<span id="cb4-275"><a href="#cb4-275" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Centers**: The number of anchor points that shape the landmasses.</span>
+<span id="cb4-276"><a href="#cb4-276" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Layout**: Switch between random anchor placement and preset layouts (like 4 Corners, Center Island, or Two Continents) to control where land forms.</span>
+<span id="cb4-277"><a href="#cb4-277" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Resolution**: The number of Voronoi cells. More points = finer detail (but slower generation).</span>
 <span id="cb4-278"><a href="#cb4-278" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-279"><a href="#cb4-279" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-280"><a href="#cb4-280" aria-hidden="true" tabindex="-1"></a><span class="al">![The exported heightmap and colormap of 50,000 polygons](figures/height-colormap.png)</span>{#fig-export}</span>
-<span id="cb4-281"><a href="#cb4-281" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-282"><a href="#cb4-282" aria-hidden="true" tabindex="-1"></a>@fig-export shows the raw output of this process. The grayscale image controls the geometry, while the colored map paints the surface.</span>
+<span id="cb4-279"><a href="#cb4-279" aria-hidden="true" tabindex="-1"></a>For example, here is what the interactive app looks like:</span>
+<span id="cb4-280"><a href="#cb4-280" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-281"><a href="#cb4-281" aria-hidden="true" tabindex="-1"></a><span class="al">![Screenshot of the Streamlit app](figures/streamlit-screenshot.png)</span>{#fig-app}</span>
+<span id="cb4-282"><a href="#cb4-282" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-283"><a href="#cb4-283" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-284"><a href="#cb4-284" aria-hidden="true" tabindex="-1"></a><span class="fu">## 3D Result</span></span>
+<span id="cb4-284"><a href="#cb4-284" aria-hidden="true" tabindex="-1"></a>With this tool in hand, the 2D phase of the project is complete. We have the map, we have the biomes, we have the rivers, and we have the controls. Now, it is time to add the third dimension.</span>
 <span id="cb4-285"><a href="#cb4-285" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-286"><a href="#cb4-286" aria-hidden="true" tabindex="-1"></a>After importing these images into Blender and applying a Displacement Modifier to a plane, the flat grid transformed into a rough terrain.</span>
+<span id="cb4-286"><a href="#cb4-286" aria-hidden="true" tabindex="-1"></a>---</span>
 <span id="cb4-287"><a href="#cb4-287" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-288"><a href="#cb4-288" aria-hidden="true" tabindex="-1"></a><span class="dt">&lt;</span><span class="kw">video</span><span class="ot"> width</span><span class="op">=</span><span class="st">"100%"</span><span class="ot"> controls</span><span class="dt">&gt;</span></span>
-<span id="cb4-289"><a href="#cb4-289" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&lt;</span><span class="kw">source</span><span class="ot"> src</span><span class="op">=</span><span class="st">"figures/rendered-video.mp4"</span><span class="ot"> type</span><span class="op">=</span><span class="st">"video/mp4"</span><span class="dt">&gt;</span></span>
-<span id="cb4-290"><a href="#cb4-290" aria-hidden="true" tabindex="-1"></a><span class="dt">&lt;/</span><span class="kw">video</span><span class="dt">&gt;</span></span>
+<span id="cb4-288"><a href="#cb4-288" aria-hidden="true" tabindex="-1"></a><span class="fu"># Stage 3: Continents</span></span>
+<span id="cb4-289"><a href="#cb4-289" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-290"><a href="#cb4-290" aria-hidden="true" tabindex="-1"></a>In the 2D map, I assigned colors based on the altitude of each Voronoi region. However, a flat map can only tell us so much. To fully utilize the altitude data and satisfy my curiosity about what this world would look like as a real landscape, I decided to move into the third dimension.</span>
 <span id="cb4-291"><a href="#cb4-291" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-292"><a href="#cb4-292" aria-hidden="true" tabindex="-1"></a>As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, and how biomes change based on altitude. Overall, I'm quite happy with what I accomplished before the semester ends.</span>
+<span id="cb4-292"><a href="#cb4-292" aria-hidden="true" tabindex="-1"></a>I chose **Blender**, a free and open-source 3D creation software, to render the map. Blender is a widely used tool for visual effects and modeling. Notably, the animated film *Flow*, which won an Academy Award in 2025, was created using Blender <span class="co">[</span><span class="ot">@oscar_2025</span><span class="co">]</span>.</span>
 <span id="cb4-293"><a href="#cb4-293" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-294"><a href="#cb4-294" aria-hidden="true" tabindex="-1"></a>---</span>
+<span id="cb4-294"><a href="#cb4-294" aria-hidden="true" tabindex="-1"></a><span class="fu">## Transfer to 3D</span></span>
 <span id="cb4-295"><a href="#cb4-295" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-296"><a href="#cb4-296" aria-hidden="true" tabindex="-1"></a><span class="fu"># Discussion and Conclusion</span></span>
+<span id="cb4-296"><a href="#cb4-296" aria-hidden="true" tabindex="-1"></a>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a **Heightmap**: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also needs a **Colormap** to paint the surface. On top of that, I also export a **River Mask** so the Blender shader can make rivers look wet and reflective, distinct from the surrounding terrain.</span>
 <span id="cb4-297"><a href="#cb4-297" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-298"><a href="#cb4-298" aria-hidden="true" tabindex="-1"></a><span class="fu">## Key Insights</span></span>
+<span id="cb4-298"><a href="#cb4-298" aria-hidden="true" tabindex="-1"></a>I wrote a script using the **Python Imaging Library (PIL/Pillow)** <span class="co">[</span><span class="ot">@pillow</span><span class="co">]</span> to export these textures directly from my generation code. The heightmap is saved as a 16-bit grayscale image for maximum precision. Rivers are painted onto the colormap and exported as a separate mask. This keeps the 3D terrain smooth while still showing rivers visually.</span>
 <span id="cb4-299"><a href="#cb4-299" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-300"><a href="#cb4-300" aria-hidden="true" tabindex="-1"></a>Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd's Relaxation was the small but key step. I didn't expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic. </span>
-<span id="cb4-301"><a href="#cb4-301" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-302"><a href="#cb4-302" aria-hidden="true" tabindex="-1"></a>Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little with it within the deadline.</span>
-<span id="cb4-303"><a href="#cb4-303" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-304"><a href="#cb4-304" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-305"><a href="#cb4-305" aria-hidden="true" tabindex="-1"></a><span class="fu">## Limitations and Future Work</span></span>
+<span id="cb4-302"><a href="#cb4-302" aria-hidden="true" tabindex="-1"></a><span class="in">```{python}</span></span>
+<span id="cb4-303"><a href="#cb4-303" aria-hidden="true" tabindex="-1"></a><span class="co">#| eval: false</span></span>
+<span id="cb4-304"><a href="#cb4-304" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: true</span></span>
+<span id="cb4-305"><a href="#cb4-305" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-summary: "Show Heightmap Export Code"</span></span>
 <span id="cb4-306"><a href="#cb4-306" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-307"><a href="#cb4-307" aria-hidden="true" tabindex="-1"></a>Even though the results look cool, there are a few things I wish I could fix with more time. Right now, moisture is just a number on a tile. It doesn't change. Rivers flowing and cutting into the land would have given the map more life. Further, my biomes only look at height and moisture. Real nature is more complex, involving wind and temperature changes which also cause more gradual shifts between biomes. </span>
-<span id="cb4-308"><a href="#cb4-308" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-309"><a href="#cb4-309" aria-hidden="true" tabindex="-1"></a>As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion to make real rivers and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.</span>
-<span id="cb4-310"><a href="#cb4-310" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-311"><a href="#cb4-311" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-312"><a href="#cb4-312" aria-hidden="true" tabindex="-1"></a><span class="fu">## Final Summary</span></span>
-<span id="cb4-313"><a href="#cb4-313" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-314"><a href="#cb4-314" aria-hidden="true" tabindex="-1"></a>At the start, I said that making worlds by hand takes too long and grids look too blocky. By using Voronoi diagrams instead of squares, and Perlin noise to shape the land, we built a system that makes infinite, natural-looking continents.</span>
-<span id="cb4-315"><a href="#cb4-315" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-316"><a href="#cb4-316" aria-hidden="true" tabindex="-1"></a>This project explored the intersection of math and art, and the potential of what they have given us and what they will. In the end, I shaped the world in my way.</span>
-<span id="cb4-317"><a href="#cb4-317" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-318"><a href="#cb4-318" aria-hidden="true" tabindex="-1"></a><span class="fu">## Note</span></span>
-<span id="cb4-319"><a href="#cb4-319" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-320"><a href="#cb4-320" aria-hidden="true" tabindex="-1"></a>All code and project files are available at the GitHub <span class="co">[</span><span class="ot">repository</span><span class="co">](https://github.com/BaSaBu1/Map-Generation)</span>. </span>
+<span id="cb4-307"><a href="#cb4-307" aria-hidden="true" tabindex="-1"></a><span class="co"># Interpolate per-region altitudes onto a regular pixel grid</span></span>
+<span id="cb4-308"><a href="#cb4-308" aria-hidden="true" tabindex="-1"></a>heights <span class="op">=</span> <span class="va">self</span>._interpolate_grid(<span class="va">self</span>.altitudes, resolution, fill_value<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb4-309"><a href="#cb4-309" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-310"><a href="#cb4-310" aria-hidden="true" tabindex="-1"></a><span class="co"># Normalize to 0.0 - 1.0</span></span>
+<span id="cb4-311"><a href="#cb4-311" aria-hidden="true" tabindex="-1"></a>h_min, h_max <span class="op">=</span> heights.<span class="bu">min</span>(), heights.<span class="bu">max</span>()</span>
+<span id="cb4-312"><a href="#cb4-312" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> h_max <span class="op">-</span> h_min <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb4-313"><a href="#cb4-313" aria-hidden="true" tabindex="-1"></a>    heights <span class="op">=</span> (heights <span class="op">-</span> h_min) <span class="op">/</span> (h_max <span class="op">-</span> h_min)</span>
+<span id="cb4-314"><a href="#cb4-314" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-315"><a href="#cb4-315" aria-hidden="true" tabindex="-1"></a><span class="co"># Save as 16-bit grayscale for maximum elevation precision</span></span>
+<span id="cb4-316"><a href="#cb4-316" aria-hidden="true" tabindex="-1"></a>heights_16 <span class="op">=</span> (heights <span class="op">*</span> <span class="dv">65535</span>).astype(np.uint16)</span>
+<span id="cb4-317"><a href="#cb4-317" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> Image.fromarray(heights_16, mode<span class="op">=</span><span class="st">"I;16"</span>)</span>
+<span id="cb4-318"><a href="#cb4-318" aria-hidden="true" tabindex="-1"></a>img.save(<span class="st">"heightmap.png"</span>)</span>
+<span id="cb4-319"><a href="#cb4-319" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb4-320"><a href="#cb4-320" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-321"><a href="#cb4-321" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-322"><a href="#cb4-322" aria-hidden="true" tabindex="-1"></a>---</span>
-<span id="cb4-323"><a href="#cb4-323" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-324"><a href="#cb4-324" aria-hidden="true" tabindex="-1"></a><span class="fu"># References</span></span>
+<span id="cb4-322"><a href="#cb4-322" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-323"><a href="#cb4-323" aria-hidden="true" tabindex="-1"></a><span class="co">&lt;!-- </span><span class="al">TODO</span><span class="co">: update height-colormap.png --&gt;</span></span>
+<span id="cb4-324"><a href="#cb4-324" aria-hidden="true" tabindex="-1"></a><span class="al">![The exported heightmap and colormap of 50,000 polygons](figures/height-colormap.png)</span>{#fig-export}</span>
 <span id="cb4-325"><a href="#cb4-325" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-326"><a href="#cb4-326" aria-hidden="true" tabindex="-1"></a>::: {#refs}</span>
-<span id="cb4-327"><a href="#cb4-327" aria-hidden="true" tabindex="-1"></a>:::</span>
+<span id="cb4-326"><a href="#cb4-326" aria-hidden="true" tabindex="-1"></a>@fig-export shows the raw output of this process. The grayscale heightmap controls the geometry, while the colored map paints the surface. The river mask is also exported alongside these so the Blender shader can apply different material properties (lower roughness, higher reflectivity) to rivers.</span>
+<span id="cb4-327"><a href="#cb4-327" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-328"><a href="#cb4-328" aria-hidden="true" tabindex="-1"></a><span class="fu">## 3D Result</span></span>
+<span id="cb4-329"><a href="#cb4-329" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-330"><a href="#cb4-330" aria-hidden="true" tabindex="-1"></a>After importing these images into Blender and applying a Displacement Modifier to a plane, the flat grid transformed into a rough terrain.</span>
+<span id="cb4-331"><a href="#cb4-331" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-332"><a href="#cb4-332" aria-hidden="true" tabindex="-1"></a><span class="dt">&lt;</span><span class="kw">video</span><span class="ot"> width</span><span class="op">=</span><span class="st">"100%"</span><span class="ot"> controls</span><span class="dt">&gt;</span></span>
+<span id="cb4-333"><a href="#cb4-333" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&lt;</span><span class="kw">source</span><span class="ot"> src</span><span class="op">=</span><span class="st">"figures/rendered-video.mp4"</span><span class="ot"> type</span><span class="op">=</span><span class="st">"video/mp4"</span><span class="dt">&gt;</span></span>
+<span id="cb4-334"><a href="#cb4-334" aria-hidden="true" tabindex="-1"></a><span class="dt">&lt;/</span><span class="kw">video</span><span class="dt">&gt;</span></span>
+<span id="cb4-335"><a href="#cb4-335" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-336"><a href="#cb4-336" aria-hidden="true" tabindex="-1"></a>As seen in the video, moving to 3D reveals details that were invisible in 2D. We can see the steepness of the mountain summits, the gradual coastlines, rivers cutting through valleys, and how biomes change based on altitude. Overall, I'm quite happy with how far this project has come.</span>
+<span id="cb4-337"><a href="#cb4-337" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-338"><a href="#cb4-338" aria-hidden="true" tabindex="-1"></a>---</span>
+<span id="cb4-339"><a href="#cb4-339" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-340"><a href="#cb4-340" aria-hidden="true" tabindex="-1"></a><span class="fu"># Discussion and Conclusion</span></span>
+<span id="cb4-341"><a href="#cb4-341" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-342"><a href="#cb4-342" aria-hidden="true" tabindex="-1"></a><span class="fu">## Key Insights</span></span>
+<span id="cb4-343"><a href="#cb4-343" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-344"><a href="#cb4-344" aria-hidden="true" tabindex="-1"></a>Through this project, I learned that making a world is a mix of math and art. I was surprised to see that pure randomness is actually ugly. The Voronoi diagram gave the map a shape, but Perlin noise made it smooth. You really need both to make it look real. Also, Lloyd's Relaxation was the small but key step. I didn't expect it to change much, but it turned a messy bunch of polygons into a clean, nice-looking grid that still felt organic. Adding rivers was another big jump - the map went from looking like a colored diagram to feeling like an actual landscape.</span>
+<span id="cb4-345"><a href="#cb4-345" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-346"><a href="#cb4-346" aria-hidden="true" tabindex="-1"></a>Finally, working in 2D was good for starting and fixing the code, but putting it into Blender finally showed me how the world really feels. However, due to the steep learning curve of Blender, I could do only a little without spending too much time on it.</span>
+<span id="cb4-347"><a href="#cb4-347" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-348"><a href="#cb4-348" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-349"><a href="#cb4-349" aria-hidden="true" tabindex="-1"></a><span class="fu">## Limitations and Future Work</span></span>
+<span id="cb4-350"><a href="#cb4-350" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-351"><a href="#cb4-351" aria-hidden="true" tabindex="-1"></a>Even though the results look cool, there are a few things I wish I could improve with more time. My biomes look at height and moisture with smooth Gaussian transitions between them, which works well visually, but real nature is more complex - wind, temperature, and seasonal changes all play a role.</span>
+<span id="cb4-352"><a href="#cb4-352" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-353"><a href="#cb4-353" aria-hidden="true" tabindex="-1"></a>As I made the map bigger with more points, the code got slower. Python is easy to write and NumPy is fast for some operations, but for a huge game world, I might need a faster language like C++. In the future, I want to add erosion simulation and put the 3D model into a game engine like Unity. That way, I could actually walk around in the world I built.</span>
+<span id="cb4-354"><a href="#cb4-354" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-355"><a href="#cb4-355" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-356"><a href="#cb4-356" aria-hidden="true" tabindex="-1"></a><span class="fu">## Final Summary</span></span>
+<span id="cb4-357"><a href="#cb4-357" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-358"><a href="#cb4-358" aria-hidden="true" tabindex="-1"></a>At the start, I said that making worlds by hand takes too long and grids look too blocky. By using Voronoi diagrams instead of squares, Perlin noise to shape the land, biomes to color the surface, and rivers to bring it to life, we built a system that generates unique, natural-looking worlds.</span>
+<span id="cb4-359"><a href="#cb4-359" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-360"><a href="#cb4-360" aria-hidden="true" tabindex="-1"></a>This project explored the intersection of math and art, and the potential of what they have given us and what they will. In the end, I shaped the world in my way.</span>
+<span id="cb4-361"><a href="#cb4-361" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-362"><a href="#cb4-362" aria-hidden="true" tabindex="-1"></a><span class="fu">## Note</span></span>
+<span id="cb4-363"><a href="#cb4-363" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-364"><a href="#cb4-364" aria-hidden="true" tabindex="-1"></a>All code and project files are available at the GitHub <span class="co">[</span><span class="ot">repository</span><span class="co">](https://github.com/BaSaBu1/Map-Generation)</span>. </span>
+<span id="cb4-365"><a href="#cb4-365" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-366"><a href="#cb4-366" aria-hidden="true" tabindex="-1"></a>---</span>
+<span id="cb4-367"><a href="#cb4-367" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-368"><a href="#cb4-368" aria-hidden="true" tabindex="-1"></a><span class="fu"># References</span></span>
+<span id="cb4-369"><a href="#cb4-369" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-370"><a href="#cb4-370" aria-hidden="true" tabindex="-1"></a>::: {#refs}</span>
+<span id="cb4-371"><a href="#cb4-371" aria-hidden="true" tabindex="-1"></a>:::</span>
 </code><button title="Copy to Clipboard" class="code-copy-button" data-in-quarto-modal=""><i class="bi"></i></button></pre></div>
 </div></div></div></div></div>
 </div> <!-- /content -->

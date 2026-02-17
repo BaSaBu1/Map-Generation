@@ -24,5 +24,9 @@ Thumbs.db
 # Project outputs
 outputs/
 
+# Private personal notes (kept local only)
+BLENDER_PRIVATE_GUIDE.md
+private/
+
 # devcontainer
 .devcontainer/

@@ -1,22 +1,35 @@
-"""
-Procedural Map Generator - Streamlit Web Application.
+"""Streamlit web UI for interactive terrain generation.
 
-Interactive web-based terrain generation using Voronoi diagrams and Perlin noise.
-Deployed at: https://basabu1-map-generation-app-fut9qy.streamlit.app/
-
-Usage:
-    streamlit run app.py
-
-Author: Batsambuu Batbold
-Course: MATH 437 - Computational Geometry
-Date: December 2025
+Run with ``streamlit run app.py`` to explore parameters, compare seeds,
+and preview maps before exporting textures.
 """
 
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from map import Map
+
+
+DEFAULTS = {
+    "seed": 42,
+    "noise_scale": 4.0,
+    "water_level": 0.35,
+    "land_centers": 5,
+    "show_rivers": True,
+    "num_points": 2000,
+    "land_layout": "Random",
+    "layout_preset": "4 Corners",
+}
+
+LAYOUT_PRESETS = {
+    "4 Corners": [(0.2, 0.2), (0.2, 0.8), (0.8, 0.2), (0.8, 0.8)],
+    "Center Island": [(0.5, 0.5)],
+    "Two Continents (E-W)": [(0.25, 0.5), (0.75, 0.5)],
+    "Two Continents (N-S)": [(0.5, 0.25), (0.5, 0.75)],
+    "Archipelago Ring": [(0.5, 0.15), (0.85, 0.5), (0.5, 0.85), (0.15, 0.5)],
+}
 
 
 st.set_page_config(
@@ -26,15 +39,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(
-    """
-    <style>
-        .block-container { padding-top: 1rem; }
-        h1 { color: #2E4057; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+def _ensure_state_defaults() -> None:
+    """Populate session state with defaults if not already set."""
+    for key, value in DEFAULTS.items():
+        st.session_state.setdefault(key, value)
+
+
+def _randomize_seed() -> None:
+    """Assign a random seed for quick map exploration."""
+    st.session_state.seed = int(np.random.default_rng().integers(0, 10000))
+
+
+def _reset_controls() -> None:
+    """Restore all sidebar controls to their defaults."""
+    for key, value in DEFAULTS.items():
+        st.session_state[key] = value
 
 
 @st.cache_data(show_spinner=False)
@@ -43,29 +62,21 @@ def generate_map_figure(
     num_points: int = 2000,
     noise_scale: float = 4.0,
     water_level: float = 0.35,
-    clusters: int = 5,
-) -> plt.Figure:
-    """
-    Generate terrain and return a matplotlib figure.
-    
-    Args:
-        seed: Random seed for reproducibility.
-        num_points: Number of Voronoi sites.
-        noise_scale: Perlin noise frequency (1-10).
-        water_level: Ocean/land threshold (0-0.8).
-        clusters: Number of island centers.
-        
-    Returns:
-        Matplotlib figure containing the rendered terrain.
-    """
-    np.random.seed(seed)
-    points = np.random.rand(num_points, 2)
+    land_centers: int = 5,
+    show_rivers: bool = True,
+    custom_anchors: tuple[tuple[float, float], ...] | None = None,
+) -> Figure:
+    """Build and render a terrain figure. Cached by Streamlit on all args."""
+    rng = np.random.default_rng(seed)
+    points = rng.random((num_points, 2))
     terrain = Map(
         points,
         size=1,
         water_level=water_level,
         noise_scale=noise_scale,
-        cluster=clusters,
+        land_centers=land_centers,
+        custom_anchors=list(custom_anchors) if custom_anchors else None,
+        seed=seed,
     )
 
     fig, ax = plt.subplots(figsize=(10, 10), dpi=100)
@@ -74,13 +85,17 @@ def generate_map_figure(
     ax.set_ylim(0, 1)
     ax.axis("off")
     terrain.plotLand(ax)
+    if show_rivers:
+        terrain.plotRivers(ax)
     plt.tight_layout(pad=0)
 
     return fig
 
 
 def main() -> None:
-    """Main application entry point."""
+    """Layout the Streamlit UI and render the current map preview."""
+    _ensure_state_defaults()
+
     st.title("🗺️ Procedural Map Generator")
     st.markdown(
         "*Generate unique worlds using Voronoi diagrams, Lloyd's relaxation, and Perlin noise*"
@@ -89,23 +104,29 @@ def main() -> None:
     # Info expander
     with st.expander("ℹ️ About This Project"):
         st.markdown("""
-        This application generates procedural terrain maps using computational geometry:
+        Procedural terrain generation using computational geometry:
         
-        - **Voronoi Diagrams**: Partition space into regions
-        - **Lloyd's Relaxation**: Creates uniform point distribution
-        - **Perlin Noise**: Generates natural-looking elevation
-        - **Biome System**: 10 distinct biomes based on elevation and moisture
+        - **Voronoi Diagrams** - partition space into regions
+        - **Lloyd's Relaxation** - create uniform point distributions
+        - **Perlin Noise** - natural-looking elevation
+        - **Biome System** - 10 biomes with Gaussian-blended transitions
+        - **River Network** - hydrological flow along Voronoi edges
         """)
 
-    # Sidebar controls
     with st.sidebar:
         st.header("⚙️ Map Controls")
 
+        # Quick-action buttons for seed scanning
+        controls_col1, controls_col2 = st.columns(2)
+        controls_col1.button("🎲 Random", use_container_width=True, on_click=_randomize_seed)
+        controls_col2.button("↩ Reset", use_container_width=True, on_click=_reset_controls)
+
         seed = st.number_input(
             "🎲 Random Seed",
-            value=42,
+            value=st.session_state.seed,
             min_value=0,
             max_value=9999,
+            key="seed",
             help="Change this for a completely different map",
         )
 
@@ -115,8 +136,9 @@ def main() -> None:
             "🔍 Noise Scale",
             min_value=1.0,
             max_value=10.0,
-            value=4.0,
+            value=st.session_state.noise_scale,
             step=0.5,
+            key="noise_scale",
             help="Higher = more detailed, but chaotic terrain features",
         )
 
@@ -124,34 +146,59 @@ def main() -> None:
             "🌊 Water Level",
             min_value=0.0,
             max_value=0.8,
-            value=0.35,
+            value=st.session_state.water_level,
             step=0.05,
+            key="water_level",
             help="Higher = more ocean, less land",
         )
 
-        clusters = st.slider(
-            "🏝️ Island Clusters",
-            min_value=1,
-            max_value=10,
-            value=5,
-            help="Number of landmass centers",
+        anchor_mode = st.radio(
+            "📍 Land Layout",
+            ["Random", "Preset"],
+            key="land_layout",
+            horizontal=True,
+            help="Random scatters anchors randomly. Preset uses a pre-defined layout.",
+        )
+
+        if anchor_mode == "Random":
+            land_centers = st.slider(
+                "🏔️ Land Centers",
+                min_value=1,
+                max_value=10,
+                value=st.session_state.land_centers,
+                key="land_centers",
+                help="More anchor points usually create more distinct landmasses",
+            )
+            custom_anchors = None
+        else:
+            layout_preset = st.selectbox(
+                "🗺️ Layout Preset",
+                options=list(LAYOUT_PRESETS.keys()),
+                key="layout_preset",
+                help="Choose a pre-defined anchor arrangement",
+            )
+            custom_anchors = tuple((p[0], p[1]) for p in LAYOUT_PRESETS[layout_preset])
+            land_centers = len(custom_anchors)
+
+        show_rivers = st.checkbox(
+            "🏞️ Show Rivers",
+            value=st.session_state.show_rivers,
+            key="show_rivers",
+            help="Overlay hydrological river network",
         )
 
         num_points = st.select_slider(
             "📍 Resolution",
             options=[100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000],
-            value=2000,
+            value=st.session_state.num_points,
+            key="num_points",
             help="More points = finer detail (slower)",
         )
 
         st.divider()
-        st.button("🔄 Generate New Map", type="primary", use_container_width=True)
-        st.divider()
-
         st.caption("MATH 437 | Computational Geometry")
         st.caption("Batsambuu Batbold | December 2025")
 
-    # Map display
     try:
         with st.spinner("🌍 Generating terrain..."):
             fig = generate_map_figure(
@@ -159,14 +206,15 @@ def main() -> None:
                 num_points=num_points,
                 noise_scale=noise_scale,
                 water_level=water_level,
-                clusters=clusters,
+                land_centers=land_centers,
+                show_rivers=show_rivers,
+                custom_anchors=custom_anchors,
             )
             
             col1, col2, col3 = st.columns([1, 3, 1])
             with col2:
                 st.pyplot(fig, use_container_width=True)
             
-            # Performance info
             st.caption(f"✓ Generated with {num_points:,} points | Seed: {seed}")
             
             plt.close(fig)
