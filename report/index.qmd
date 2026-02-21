@@ -142,7 +142,7 @@ def assignAltitudes(self):
     # tiles far from anchors below the water level
     base_alt = noise_vals - normalized_dists ** 2
 
-    # --- Piecewise power curve: gentle near coast, steep inland ---
+    # Piecewise power curve: gentle near coast, steep inland
     land_mask = base_alt > self.water_level
     self.altitudes = base_alt.copy()
     land_vals = base_alt[land_mask]
@@ -153,7 +153,7 @@ def assignAltitudes(self):
     coastal = land_norm < 0.35
     sharpened = np.empty_like(land_norm)
     sharpened[coastal] = land_norm[coastal] * 0.8
-    # Above 35% = inland: start at 0.28 (matches coastal edge: 0.35*0.8),
+    # Above 35% = inland: start at 0.28 (= 0.35*0.8),
     # then rise steeply with exponent 1.3, amplified by 3x
     sharpened[~coastal] = 0.28 + np.power(land_norm[~coastal] - 0.35, 1.3) * 3
     # Map shaped values back to the full altitude range
@@ -181,7 +181,9 @@ By combining these two values (Altitude and Moisture), we can classify every til
 * Mid Altitude + High Moisture $\rightarrow$ Forest
 * Low Altitude + Low Moisture $\rightarrow$ Desert
 
-However, using this rigid classification directly looks terrible. The boundaries between biomes are sharp and artificial - a tile is either 100% forest or 100% desert with no in-between. Real nature doesn't work like that. To fix this, I used a three-step pipeline:
+![Terrain with biome colorings](figures/rigid_biomes.png){#fig-rigid-biomes width=75%}
+
+However, as seen in @fig-rigid-biomes, using this rigid classification directly looks little off. The boundaries between biomes are sharp because a tile is either 100% forest or 100% desert with no in-between. Real nature doesn't work like that. To fix this, I used a three-step pipeline:
 
 1. **Lookup Table (LUT)**: I evaluate the Whittaker classification on a $256 \times 256$ grid (elevation × moisture), producing a hard-edged biome color map.
 
