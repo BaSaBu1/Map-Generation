@@ -321,7 +321,7 @@ class Map:
         # Count how many hops each vertex is from water
         path_len = self._compute_path_lengths(num_v, land_mask, water_mask, flow_to)
 
-        # Pass 1 - main rivers (long, high-flow)
+        # Main rivers
         main_min_len = max(5, int(np.sqrt(num_v) * 0.05))
         main_paths = self._select_rivers(
             land_mask, water_mask, flow_to, path_len,
@@ -331,7 +331,7 @@ class Map:
             occupancy_spacing=4,
         )
 
-        # Pass 2 - tributaries (shorter, moderate-flow)
+        # Shorter tributaries
         trib_min_len = max(3, main_min_len // 2)
         trib_paths = self._select_rivers(
             land_mask, water_mask, flow_to, path_len,
@@ -351,10 +351,7 @@ class Map:
         self.rivers = self._paths_to_segments(all_paths, flow_to, water_mask)
         if self.rivers:
             self.max_flow = float(max(flow for _, _, flow in self.rivers))
-
-    # ------------------------------------------------------------------
-    # River helper methods
-    # ------------------------------------------------------------------
+            
 
     def _compute_path_lengths(
         self, num_v: int, land_mask: np.ndarray,
