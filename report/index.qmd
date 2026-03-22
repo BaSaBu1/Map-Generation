@@ -249,7 +249,7 @@ I implemented a river system using the Voronoi mesh structure. The idea is to us
 
 2. **Flow Accumulation**: Starting from the highest vertices, each one passes its accumulated count downstream. Vertices near mountaintops have low counts, while those near the coast collect from hundreds of upstream sources. This count directly controls river width and opacity - thicker lines for major rivers, thin faint lines for small streams.
 
-3. **Two-Pass Source Selection**: The first pass picks high-accumulation vertices with long paths to water as the main river sources. The second pass fills in shorter tributaries to improve coverage, and an occupancy grid keeps rivers from clustering too close together.
+3. **Two-Pass Source Selection**: In the first pass, I look for points that both collect strong upstream flow and lie far from the sea, so they can form long main rivers. We rank those points with a score that combines flow and distance-to-sea (`score = flow_acc * (1 + path_len / max_len)`), then keep the highest-ranked ones as starting points, and trace each one downstream to the ocean to form a full river path. In the second pass, we repeat the same process with looser thresholds to add shorter tributaries and improve overall drainage coverage. In both passes, we use an occupancy grid: once a river path is chosen, nearby candidate sources are blocked so rivers do not cluster too tightly.
 
 The rivers are drawn with width and opacity scaled by their flow accumulation - wider, more visible lines for major rivers and thin, faint lines for small streams.
 
@@ -271,10 +271,10 @@ The app gives you control over the key generation parameters:
 * **Noise Scale**: Controls the "zoom" of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.
 * **Water Level**: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.
 * **Land Centers**: The number of anchor points that shape the landmasses.
-* **Land Layout**: Switch between random anchor placement and preset layouts (like 4 Corners, Center Island, or Two Continents) to control where land forms.
+* **Land Layout**: Switch between random anchor placement, preset layouts (like 4 Corners, Center Island, or Two Continents), and custom positions to control where land forms.
 * **Resolution**: The number of Voronoi cells. More points = finer detail (but slower generation).
 
-For example, here is what the interactive app looks like:
+For example, here is what the interactive app looks like with 5 custom land centers placed in a "cross" pattern:
 
 ![Screenshot of the Streamlit app](figures/streamlit-screenshot.png){#fig-app}
 

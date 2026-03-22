@@ -9,6 +9,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+try:
+    from streamlit_drawable_canvas import st_canvas  # type: ignore[reportMissingImports]
+    HAS_DRAWABLE_CANVAS = True
+except Exception:
+    st_canvas = None
+    HAS_DRAWABLE_CANVAS = False
+
 from map import Map
 
 
@@ -21,6 +28,8 @@ DEFAULTS = {
     "num_points": 2000,
     "land_layout": "Random",
     "layout_preset": "4 Corners",
+    "custom_anchors": [],
+    "custom_canvas_nonce": 0,
 }
 
 LAYOUT_PRESETS = {
@@ -54,6 +63,31 @@ def _reset_controls() -> None:
     """Restore all sidebar controls to their defaults."""
     for key, value in DEFAULTS.items():
         st.session_state[key] = value
+
+
+def _extract_canvas_anchors(canvas_result, max_points: int = 5) -> list[tuple[float, float]]:
+    """Read point objects from the drawing canvas and normalize to [0, 1]."""
+    anchors: list[tuple[float, float]] = []
+    if not canvas_result or not canvas_result.json_data:
+        return anchors
+
+    objects = canvas_result.json_data.get("objects", [])
+    for obj in objects:
+        if obj.get("type") != "circle":
+            continue
+
+        # Fabric circles store the top-left corner and radius in canvas pixels.
+        left = float(obj.get("left", 0.0))
+        top = float(obj.get("top", 0.0))
+        radius = float(obj.get("radius", 0.0))
+        cx = left + radius
+        cy = top + radius
+
+        x_norm = float(np.clip(cx / 300.0, 0.0, 1.0))
+        y_norm = float(np.clip(1.0 - (cy / 300.0), 0.0, 1.0))
+        anchors.append((x_norm, y_norm))
+
+    return anchors[:max_points]
 
 
 @st.cache_data(show_spinner=False)
@@ -154,10 +188,10 @@ def main() -> None:
 
         anchor_mode = st.radio(
             "📍 Land Layout",
-            ["Random", "Preset"],
+            ["Random", "Preset", "Custom"],
             key="land_layout",
             horizontal=True,
-            help="Random scatters anchors randomly. Preset uses a pre-defined layout.",
+            help="Random scatters anchors. Preset uses pre-defined layouts. Custom lets you click anchors.",
         )
 
         if anchor_mode == "Random":
@@ -170,7 +204,7 @@ def main() -> None:
                 help="More anchor points usually create more distinct landmasses",
             )
             custom_anchors = None
-        else:
+        elif anchor_mode == "Preset":
             layout_preset = st.selectbox(
                 "🗺️ Layout Preset",
                 options=list(LAYOUT_PRESETS.keys()),
@@ -179,6 +213,53 @@ def main() -> None:
             )
             custom_anchors = tuple((p[0], p[1]) for p in LAYOUT_PRESETS[layout_preset])
             land_centers = len(custom_anchors)
+        else:
+            st.caption("Click up to 5 points to place custom land anchors.")
+            clear_points = st.button("🧹 Clear Custom Anchors", use_container_width=True)
+
+            if clear_points:
+                st.session_state.custom_anchors = []
+                st.session_state.custom_canvas_nonce += 1
+
+            if HAS_DRAWABLE_CANVAS and st_canvas is not None:
+                canvas_result = st_canvas(
+                    fill_color="rgba(30, 136, 229, 0.85)",
+                    stroke_width=1,
+                    stroke_color="#1565c0",
+                    background_color="#f6f8fb",
+                    update_streamlit=True,
+                    height=300,
+                    width=300,
+                    drawing_mode="point",
+                    point_display_radius=6,
+                    key=f"anchor_canvas_{st.session_state.custom_canvas_nonce}",
+                )
+
+                extracted = _extract_canvas_anchors(canvas_result, max_points=5)
+                if extracted:
+                    st.session_state.custom_anchors = extracted
+            else:
+                st.warning(
+                    "Interactive canvas unavailable. Install streamlit-drawable-canvas to enable click placement."
+                )
+
+            custom_anchor_list = list(st.session_state.custom_anchors)
+            if len(custom_anchor_list) >= 5:
+                st.caption("Maximum reached: 5 anchors")
+
+            if custom_anchor_list:
+                st.caption(
+                    "Selected anchors: " + ", ".join(
+                        [f"({x:.2f}, {y:.2f})" for x, y in custom_anchor_list]
+                    )
+                )
+                custom_anchors = tuple(custom_anchor_list)
+                land_centers = len(custom_anchors)
+            else:
+                st.info("Add at least 1 anchor point to use Custom mode.")
+                # Fail-safe so generation still works if user has not clicked yet.
+                custom_anchors = None
+                land_centers = st.session_state.land_centers
 
         show_rivers = st.checkbox(
             "🏞️ Show Rivers",

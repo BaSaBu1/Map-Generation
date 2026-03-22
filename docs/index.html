@@ -349,7 +349,7 @@ Figure&nbsp;4: Preset layout with anchors at the four corners creates four disti
 <ul>
 <li><strong>The Power Curve</strong>: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</li>
 </ul>
-<div id="bf4d5746" class="cell" data-execution_count="1">
+<div id="b39bd7b6" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Show Python Implementation</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> assignAltitudes(<span class="va">self</span>):</span>
@@ -440,7 +440,7 @@ Figure&nbsp;6: Terrain with biome colorings
 <li><p><strong>Gaussian Blur</strong> <span class="citation" data-cites="gaussian_blur"><a href="#ref-gaussian_blur" role="doc-biblioref">[9]</a></span>: Using SciPy’s <code>gaussian_filter</code>, I blur the table with a Gaussian kernel (<span class="math inline">\(\sigma = 8\)</span>). This dissolves the sharp boundaries into smooth gradients - a forest fades into grassland instead of cutting off abruptly.</p></li>
 <li><p><strong>Bilinear Interpolation</strong>: When looking up a tile’s color, I interpolate between the four surrounding cells in the blurred table instead of snapping to the nearest one, removing any remaining banding.</p></li>
 </ol>
-<div id="d47931ac" class="cell" data-execution_count="2">
+<div id="4594b7c0" class="cell" data-execution_count="2">
 <details class="code-fold">
 <summary>Show Biome Coloring Pipeline</summary>
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_biome_table(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
@@ -501,7 +501,7 @@ Figure&nbsp;7: Terrain with biome colorings and smooth Gaussian transitions
 <ol type="1">
 <li><p><strong>Priority-Flood Flow Routing</strong> <span class="citation" data-cites="BARNES2014117"><a href="#ref-BARNES2014117" role="doc-biblioref">[10]</a></span>: Starting from all ocean vertices, the algorithm floods outward using a min-heap (priority queue), always processing the lowest-elevation vertex first. Each visited vertex records where it was reached from, creating a flow-to pointer. This builds a spanning tree where every land vertex has a single downhill path to the sea.</p></li>
 <li><p><strong>Flow Accumulation</strong>: Starting from the highest vertices, each one passes its accumulated count downstream. Vertices near mountaintops have low counts, while those near the coast collect from hundreds of upstream sources. This count directly controls river width and opacity - thicker lines for major rivers, thin faint lines for small streams.</p></li>
-<li><p><strong>Two-Pass Source Selection</strong>: The first pass picks high-accumulation vertices with long paths to water as the main river sources. The second pass fills in shorter tributaries to improve coverage, and an occupancy grid keeps rivers from clustering too close together.</p></li>
+<li><p><strong>Two-Pass Source Selection</strong>: In the first pass, I look for points that both collect strong upstream flow and lie far from the sea, so they can form long main rivers. We rank those points with a score that combines flow and distance-to-sea (<code>score = flow_acc * (1 + path_len / max_len)</code>), then keep the highest-ranked ones as starting points, and trace each one downstream to the ocean to form a full river path. In the second pass, we repeat the same process with looser thresholds to add shorter tributaries and improve overall drainage coverage. In both passes, we use an occupancy grid: once a river path is chosen, nearby candidate sources are blocked so rivers do not cluster too tightly.</p></li>
 </ol>
 <p>The rivers are drawn with width and opacity scaled by their flow accumulation - wider, more visible lines for major rivers and thin, faint lines for small streams.</p>
 <div id="fig-rivers" class="quarto-float quarto-figure quarto-figure-center anchored">
@@ -527,10 +527,10 @@ Figure&nbsp;8: Terrain with rivers flowing from mountains to the ocean
 <li><strong>Noise Scale</strong>: Controls the “zoom” of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.</li>
 <li><strong>Water Level</strong>: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.</li>
 <li><strong>Land Centers</strong>: The number of anchor points that shape the landmasses.</li>
-<li><strong>Land Layout</strong>: Switch between random anchor placement and preset layouts (like 4 Corners, Center Island, or Two Continents) to control where land forms.</li>
+<li><strong>Land Layout</strong>: Switch between random anchor placement, preset layouts (like 4 Corners, Center Island, or Two Continents), and custom positions to control where land forms.</li>
 <li><strong>Resolution</strong>: The number of Voronoi cells. More points = finer detail (but slower generation).</li>
 </ul>
-<p>For example, here is what the interactive app looks like:</p>
+<p>For example, here is what the interactive app looks like with 5 custom land centers placed in a “cross” pattern:</p>
 <div id="fig-app" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-app-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -553,7 +553,7 @@ Figure&nbsp;9: Screenshot of the Streamlit app
 <h2 class="anchored" data-anchor-id="transfer-to-3d">Transfer to 3D</h2>
 <p>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a <strong>Heightmap</strong>: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also needs a <strong>Colormap</strong> to paint the surface. On top of that, I also export a <strong>River Mask</strong> so the Blender shader can make rivers look wet and reflective, distinct from the surrounding terrain.</p>
 <p>I wrote a script using the <strong>Python Imaging Library (PIL/Pillow)</strong> <span class="citation" data-cites="pillow"><a href="#ref-pillow" role="doc-biblioref">[12]</a></span> to export these textures directly from my generation code. The heightmap is saved as a 16-bit grayscale image for maximum precision. Rivers are painted onto the colormap and exported as a separate mask. This keeps the 3D terrain smooth while still showing rivers visually.</p>
-<div id="bef5a84b" class="cell" data-execution_count="3">
+<div id="f4cc4d4b" class="cell" data-execution_count="3">
 <details class="code-fold">
 <summary>Show Heightmap Export Code</summary>
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interpolate per-region altitudes onto a regular pixel grid</span></span>
@@ -1364,7 +1364,7 @@ Figure&nbsp;10: The exported heightmap and colormap of 50,000 polygons
 <span id="cb4-253"><a href="#cb4-253" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-254"><a href="#cb4-254" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>**Flow Accumulation**: Starting from the highest vertices, each one passes its accumulated count downstream. Vertices near mountaintops have low counts, while those near the coast collect from hundreds of upstream sources. This count directly controls river width and opacity - thicker lines for major rivers, thin faint lines for small streams.</span>
 <span id="cb4-255"><a href="#cb4-255" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-256"><a href="#cb4-256" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>**Two-Pass Source Selection**: The first pass picks high-accumulation vertices with long paths to water as the main river sources. The second pass fills in shorter tributaries to improve coverage, and an occupancy grid keeps rivers from clustering too close together.</span>
+<span id="cb4-256"><a href="#cb4-256" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>**Two-Pass Source Selection**: In the first pass, I look for points that both collect strong upstream flow and lie far from the sea, so they can form long main rivers. We rank those points with a score that combines flow and distance-to-sea (<span class="in">`score = flow_acc * (1 + path_len / max_len)`</span>), then keep the highest-ranked ones as starting points, and trace each one downstream to the ocean to form a full river path. In the second pass, we repeat the same process with looser thresholds to add shorter tributaries and improve overall drainage coverage. In both passes, we use an occupancy grid: once a river path is chosen, nearby candidate sources are blocked so rivers do not cluster too tightly.</span>
 <span id="cb4-257"><a href="#cb4-257" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-258"><a href="#cb4-258" aria-hidden="true" tabindex="-1"></a>The rivers are drawn with width and opacity scaled by their flow accumulation - wider, more visible lines for major rivers and thin, faint lines for small streams.</span>
 <span id="cb4-259"><a href="#cb4-259" aria-hidden="true" tabindex="-1"></a></span>
@@ -1386,10 +1386,10 @@ Figure&nbsp;10: The exported heightmap and colormap of 50,000 polygons
 <span id="cb4-275"><a href="#cb4-275" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Noise Scale**: Controls the "zoom" of the features. Higher values create chaotic, fragmented terrain; lower values create massive continents.</span>
 <span id="cb4-276"><a href="#cb4-276" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Water Level**: Raises or lowers the ocean. Higher values result in archipelagos; lower values create super-continents.</span>
 <span id="cb4-277"><a href="#cb4-277" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Centers**: The number of anchor points that shape the landmasses.</span>
-<span id="cb4-278"><a href="#cb4-278" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Layout**: Switch between random anchor placement and preset layouts (like 4 Corners, Center Island, or Two Continents) to control where land forms.</span>
+<span id="cb4-278"><a href="#cb4-278" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Land Layout**: Switch between random anchor placement, preset layouts (like 4 Corners, Center Island, or Two Continents), and custom positions to control where land forms.</span>
 <span id="cb4-279"><a href="#cb4-279" aria-hidden="true" tabindex="-1"></a><span class="ss">* </span>**Resolution**: The number of Voronoi cells. More points = finer detail (but slower generation).</span>
 <span id="cb4-280"><a href="#cb4-280" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-281"><a href="#cb4-281" aria-hidden="true" tabindex="-1"></a>For example, here is what the interactive app looks like:</span>
+<span id="cb4-281"><a href="#cb4-281" aria-hidden="true" tabindex="-1"></a>For example, here is what the interactive app looks like with 5 custom land centers placed in a "cross" pattern:</span>
 <span id="cb4-282"><a href="#cb4-282" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-283"><a href="#cb4-283" aria-hidden="true" tabindex="-1"></a><span class="al">![Screenshot of the Streamlit app](figures/streamlit-screenshot.png)</span>{#fig-app}</span>
 <span id="cb4-284"><a href="#cb4-284" aria-hidden="true" tabindex="-1"></a></span>
