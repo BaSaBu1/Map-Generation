@@ -214,7 +214,7 @@ def main() -> None:
             custom_anchors = tuple((p[0], p[1]) for p in LAYOUT_PRESETS[layout_preset])
             land_centers = len(custom_anchors)
         else:
-            st.caption("Click up to 5 points to place custom land anchors.")
+            st.caption("Click on the white window below to add up to 5 custom points as places for land anchors.")
             clear_points = st.button("🧹 Clear Custom Anchors", use_container_width=True)
 
             if clear_points:
@@ -277,8 +277,7 @@ def main() -> None:
         )
 
         st.divider()
-        st.caption("MATH 437 | Computational Geometry")
-        st.caption("Batsambuu Batbold | December 2025")
+        st.caption("Batsambuu Batbold | Macalester College")
 
     try:
         with st.spinner("🌍 Generating terrain..."):

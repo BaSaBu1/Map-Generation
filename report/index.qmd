@@ -2,7 +2,7 @@
 title: "From Chaos to Continents"
 subtitle: "Procedural Terrain Generation Using Voronoi Diagrams and More"
 author: "Batsambuu Batbold"
-date: "December 16, 2025"
+date: 2026-03-25
 abstract: |
   Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Rivers are generated using priority-flood drainage routing along the Voronoi edges. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.
 

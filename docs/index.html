@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Batsambuu Batbold">
-<meta name="dcterms.date" content="2025-12-16">
+<meta name="dcterms.date" content="2026-03-25">
 
 <title>From Chaos to Continents</title>
 <style>
@@ -221,7 +221,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">December 16, 2025</p>
+      <p class="date">March 25, 2026</p>
     </div>
   </div>
   
@@ -349,7 +349,7 @@ Figure&nbsp;4: Preset layout with anchors at the four corners creates four disti
 <ul>
 <li><strong>The Power Curve</strong>: Finally, I apply a non-linear adjustment to the height profile. I wanted flat, gentle slopes around the coastline for beaches and plains but much steeper, dramatic rises in the center. I achieved this by applying a power curve to the land values.</li>
 </ul>
-<div id="b39bd7b6" class="cell" data-execution_count="1">
+<div id="d94c463a" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Show Python Implementation</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> assignAltitudes(<span class="va">self</span>):</span>
@@ -440,7 +440,7 @@ Figure&nbsp;6: Terrain with biome colorings
 <li><p><strong>Gaussian Blur</strong> <span class="citation" data-cites="gaussian_blur"><a href="#ref-gaussian_blur" role="doc-biblioref">[9]</a></span>: Using SciPy’s <code>gaussian_filter</code>, I blur the table with a Gaussian kernel (<span class="math inline">\(\sigma = 8\)</span>). This dissolves the sharp boundaries into smooth gradients - a forest fades into grassland instead of cutting off abruptly.</p></li>
 <li><p><strong>Bilinear Interpolation</strong>: When looking up a tile’s color, I interpolate between the four surrounding cells in the blurred table instead of snapping to the nearest one, removing any remaining banding.</p></li>
 </ol>
-<div id="4594b7c0" class="cell" data-execution_count="2">
+<div id="682049bf" class="cell" data-execution_count="2">
 <details class="code-fold">
 <summary>Show Biome Coloring Pipeline</summary>
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_biome_table(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
@@ -553,7 +553,7 @@ Figure&nbsp;9: Screenshot of the Streamlit app
 <h2 class="anchored" data-anchor-id="transfer-to-3d">Transfer to 3D</h2>
 <p>To use Blender, I first needed to export my Python data into a format the software could understand. Blender generates terrain using a <strong>Heightmap</strong>: a grayscale image where black represents the ocean floor and white represents the highest mountain peaks. It also needs a <strong>Colormap</strong> to paint the surface. On top of that, I also export a <strong>River Mask</strong> so the Blender shader can make rivers look wet and reflective, distinct from the surrounding terrain.</p>
 <p>I wrote a script using the <strong>Python Imaging Library (PIL/Pillow)</strong> <span class="citation" data-cites="pillow"><a href="#ref-pillow" role="doc-biblioref">[12]</a></span> to export these textures directly from my generation code. The heightmap is saved as a 16-bit grayscale image for maximum precision. Rivers are painted onto the colormap and exported as a separate mask. This keeps the 3D terrain smooth while still showing rivers visually.</p>
-<div id="f4cc4d4b" class="cell" data-execution_count="3">
+<div id="b44d7582" class="cell" data-execution_count="3">
 <details class="code-fold">
 <summary>Show Heightmap Export Code</summary>
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Interpolate per-region altitudes onto a regular pixel grid</span></span>
@@ -1117,7 +1117,7 @@ Figure&nbsp;10: The exported heightmap and colormap of 50,000 polygons
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="an">title:</span><span class="co"> "From Chaos to Continents"</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="an">subtitle:</span><span class="co"> "Procedural Terrain Generation Using Voronoi Diagrams and More"</span></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="an">author:</span><span class="co"> "Batsambuu Batbold"</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="an">date:</span><span class="co"> "December 16, 2025"</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="an">date:</span><span class="co"> 2026-03-25</span></span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="an">abstract:</span><span class="co"> |</span></span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">  Hand-crafting a massive video game world is an incredibly time-consuming task. Is there a way to let the computer build it for us? In this project, we explore Procedural Content Generation, using algorithms to create unique landscapes automatically. While many traditional approaches use square grids, these often look blocky and artificial. We aim to fix this by creating terrain that feels organic. We replace rigid squares with Voronoi diagrams to create natural shapes, and we use Perlin noise to generate realistic mountains and valleys. We also implement a system to assign biomes, such as forests and deserts, based on the simulation of height and moisture. Rivers are generated using priority-flood drainage routing along the Voronoi edges. Finally, we bring the map to life by rendering it in 3D using Blender. This project demonstrates how we can turn mathematics into explorable worlds.</span></span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
